@@ -1,4 +1,4 @@
-// Copyright 2025 DreamWorks Animation LLC
+// Copyright 2025-2026 DreamWorks Animation LLC
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
@@ -74,7 +74,7 @@ public:
                                              const float a,
                                              const float w,
                                              const bool drawEndPoint,
-                                             const unsigned nodeId,
+                                             const size_t nodeId,
                                              const PosType startPosType,
                                              const PosType endPosType)>;
     void crawlAllLines(const CrawlLineFunc& func);
@@ -143,27 +143,56 @@ public:
     scene_rdl2::math::Mat4d getCachedCameraXform() const;
     bool getCameraXformWasCached() const;
 
+    // Selects the next/previous node by incrementing/decrementing 
+    // the mSelectedNode index. An index of -1 indicates that no 
+    // node is selected. When the node is less than 0 or greater
+    // than the size of the nodes vector, we reset the selected node
+    // to -1 (no node selected state).
+    void nextNode();
+    void prevNode();
+
+    // Returns a formatted string containing information about the given node
+    std::string getNodeInfo(const size_t nodeIndex) const;
+
+    // Indicates whether the given node is currently selected.
+    // If mSelectedNode == -1, it means no node is selected.
+    // However, since this function is primarily used for drawing lines,
+    // we treat -1 as a wildcard, so that all lines are drawn
+    // in a "no node selected" state.
+    bool isSelectedNode(const int nodeIndex) const;
+
     /// ------------------------- UI getters --------------------------------- //
 
     uint32_t getPixelX() const;
     uint32_t getPixelY() const;
     uint32_t getMaxDepth() const;
 
+    bool isSample(const uint8_t flags) const;
+
     // Whether to show the ray with the given flag
     // based on the visibility flags
     bool showRay(const uint8_t& flag) const;
 
-    bool getShowSpecularRays() const;
-    bool getShowDiffuseRays() const;
-    bool getShowBsdfSamples() const;
+    bool getShowDirectRays() const;
+    bool getShowIndirectRays() const;
+    bool getShowSamples() const;
+    bool getShowIndirectSpecularRays() const;
+    bool getShowIndirectDiffuseRays() const;
+    bool getShowDirectSpecularRays() const;
+    bool getShowDirectDiffuseRays() const;
+    bool getShowDirectLightRays() const;
+    bool getShowDiffuseSamples() const;
+    bool getShowSpecularSamples() const;
     bool getShowLightSamples() const;
 
     const scene_rdl2::math::Color& getCameraRayColor() const;
-    const scene_rdl2::math::Color& getSpecularRayColor() const;
-    const scene_rdl2::math::Color& getDiffuseRayColor() const;
-    const scene_rdl2::math::Color& getBsdfSampleColor() const;
-    const scene_rdl2::math::Color& getLightSampleColor() const;
+    const scene_rdl2::math::Color& getIndirectSpecularRayColor() const;
+    const scene_rdl2::math::Color& getIndirectDiffuseRayColor() const;
+    const scene_rdl2::math::Color& getDirectSpecularRayColor() const;
+    const scene_rdl2::math::Color& getDirectDiffuseRayColor() const;
+    const scene_rdl2::math::Color& getDirectLightRayColor() const;
 
+    float getMaxRayLength() const;
     float getLineWidth() const;
     float getHiddenLineOpacity() const;
 
@@ -172,6 +201,8 @@ public:
     uint32_t getLightSamples() const;
     uint32_t getBsdfSamples() const;
 
+    uint32_t getSelectedNode() const;
+
     /// ------------------------- UI setters --------------------------------- //
 
     void setPixelX(uint32_t px, bool update = false);
@@ -179,17 +210,26 @@ public:
     void setPixel(uint32_t px, uint32_t py, bool update = false);
     void setMaxDepth(int depth, bool update = false);
 
-    void setShowSpecularRays(bool flag);
-    void setShowDiffuseRays(bool flag);
-    void setShowBsdfSamples(bool flag);
+    void setShowDirectRays(bool flag);
+    void setShowIndirectRays(bool flag);
+    void setShowSamples(bool flag);
+    void setShowIndirectSpecularRays(bool flag);
+    void setShowIndirectDiffuseRays(bool flag);
+    void setShowDirectSpecularRays(bool flag);
+    void setShowDirectDiffuseRays(bool flag);
+    void setShowDirectLightRays(bool flag);
+    void setShowDiffuseSamples(bool flag);
+    void setShowSpecularSamples(bool flag);
     void setShowLightSamples(bool flag);
 
     void setCameraRayColor(scene_rdl2::math::Color color);
-    void setSpecularRayColor(scene_rdl2::math::Color color);
-    void setDiffuseRayColor(scene_rdl2::math::Color color);
-    void setBsdfSampleColor(scene_rdl2::math::Color color);
-    void setLightSampleColor(scene_rdl2::math::Color color);
+    void setIndirectSpecularRayColor(scene_rdl2::math::Color color);
+    void setIndirectDiffuseRayColor(scene_rdl2::math::Color color);
+    void setDirectSpecularRayColor(scene_rdl2::math::Color color);
+    void setDirectDiffuseRayColor(scene_rdl2::math::Color color);
+    void setDirectLightRayColor(scene_rdl2::math::Color color);
 
+    void setMaxRayLength(float length, bool update = false);
     void setLineWidth(const float value);
     void setHiddenLineOpacity(float value);
 
@@ -197,6 +237,8 @@ public:
     void setPixelSamples(uint32_t samples, bool update = false);
     void setLightSamples(uint32_t samples, bool update = false);
     void setBsdfSamples(uint32_t samples, bool update = false);
+
+    void setSelectedNode(int nodeIndex);
 
     /// ------------------------------
 
@@ -248,6 +290,10 @@ private:
 
     // Whether the navigation camera xform has been cached
     bool mCameraXformWasCached;
+
+    // Index of the currently selected node
+    // -1 indicates that no node is selected
+    int mSelectedNode {-1};
 };
 
 } // end namespace rndr

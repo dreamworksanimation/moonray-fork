@@ -1,4 +1,4 @@
-// Copyright 2025 DreamWorks Animation LLC
+// Copyright 2025-2026 DreamWorks Animation LLC
 // SPDX-License-Identifier: Apache-2.0
 
 #include "PathVisualizerManager.h"
@@ -36,13 +36,13 @@ void PathVisualizerManager::initialize(const scene_rdl2::rdl2::SceneVariables& v
     // Only create the path visualizer once
     if (!isInNoneState()) { return; }
 
-    const float sceneSize = scene_rdl2::math::length(scene->getEmbreeAccelerator()->getBounds().size());
+    mParams->mMaxRayLength = scene_rdl2::math::length(scene->getEmbreeAccelerator()->getBounds().size());
 
     const unsigned width = vars.getRezedWidth();
     const unsigned height = vars.getRezedHeight();
     pbr::PathVisualizerParams* params = mParams.get();
     params->setPixelRange(0, 0, width - 1, height - 1);
-    mPathVisualizer->initialize(width, height, params, sceneSize);
+    mPathVisualizer->initialize(width, height, params);
     
     mScene = scene;
     mScene->setPathVisualizer(mPathVisualizer.get());
@@ -72,6 +72,11 @@ void PathVisualizerManager::stopSimulation()
 {
     MNRY_ASSERT(isInRecordState());
     mPathVisualizer->setState(pbr::State::STOP_RECORD);
+
+    // If the selected node is out of bounds, reset it
+    if (mSelectedNode >= mPathVisualizer->getNodeCount()) {
+        mSelectedNode = -1;
+    }
 
     mSimulationTime = mSimulationRecTime.end();
 }
@@ -234,6 +239,46 @@ void PathVisualizerManager::setCameraXformWasCached(const bool cached)
     mCameraXformWasCached = cached;
 }
 
+void PathVisualizerManager::nextNode()
+{
+    if (mPathVisualizer->getNodeCount() == 0) { return; }
+
+    mSelectedNode = mSelectedNode + 1;
+    // When we pass the last node, loop back to a "no nodes selected"
+    // state, indicated by -1, before starting back at index 0
+    if (mSelectedNode >= mPathVisualizer->getNodeCount()) {
+        mSelectedNode = -1;
+    }
+}
+
+void PathVisualizerManager::prevNode()
+{
+    if (mPathVisualizer->getNodeCount() == 0) { return; }
+
+    mSelectedNode = mSelectedNode - 1;
+    // When we go to the previous node from a "no nodes selected"
+    // state, indicated by -1, loop back to the highest node index
+    if (mSelectedNode < -1) {
+        mSelectedNode = mPathVisualizer->getNodeCount() - 1;
+    }
+}
+
+std::string PathVisualizerManager::getNodeInfo(const size_t nodeIndex) const
+{
+    if (!mPathVisualizer) return "";
+    return mPathVisualizer->getNodeInfo(nodeIndex);
+}
+
+// Check if the given node index is the selected node
+// We treat -1 as a special case meaning no node is selected.
+// But here we consider -1 as a wildcard that matches any node,
+// as this function is primarily used for drawing lines that match the node index,
+// and when no node is selected, we want to see all lines
+bool PathVisualizerManager::isSelectedNode(const int nodeIndex) const
+{
+    return mSelectedNode == -1 || mSelectedNode == nodeIndex;
+}
+
 /// ----------------------------- Getters ------------------------------------
 
 bool PathVisualizerManager::isOn() const
@@ -315,30 +360,93 @@ uint32_t PathVisualizerManager::getPixelX() const { return mParams->mPixelX; }
 uint32_t PathVisualizerManager::getPixelY() const { return mParams->mPixelY; }
 uint32_t PathVisualizerManager::getMaxDepth() const { return mParams->mMaxDepth; }
 
-bool PathVisualizerManager::showRay(const uint8_t& flag) const
+bool PathVisualizerManager::isSample(const uint8_t flags) const
 {
-    switch (static_cast<pbr::PathVisualizer::Flags>(flag)) {
-        case pbr::PathVisualizer::Flags::CAMERA:        return true;
-        case pbr::PathVisualizer::Flags::SPECULAR:      return getShowSpecularRays();
-        case pbr::PathVisualizer::Flags::DIFFUSE:       return getShowDiffuseRays();
-        case pbr::PathVisualizer::Flags::BSDF_SAMPLE:   return getShowBsdfSamples();
-        case pbr::PathVisualizer::Flags::LIGHT_SAMPLE:  return getShowLightSamples();
-        case pbr::PathVisualizer::Flags::INACTIVE:      return getShowLightSamples();
-        default:                                        return false;
-    }
+    const auto flag = static_cast<pbr::PathVisualizer::Flags>(flags);
+    return pbr::PathVisualizer::isSpecularSample(flag) ||
+           pbr::PathVisualizer::isDiffuseSample(flag) ||
+           pbr::PathVisualizer::isLightSample(flag);
 }
 
-bool PathVisualizerManager::getShowSpecularRays() const { return mParams->mSpecularRaysOn; }
-bool PathVisualizerManager::getShowDiffuseRays() const { return mParams->mDiffuseRaysOn; }
-bool PathVisualizerManager::getShowBsdfSamples() const { return mParams->mBsdfSamplesOn; }
-bool PathVisualizerManager::getShowLightSamples() const { return mParams->mLightSamplesOn; }
+bool PathVisualizerManager::showRay(const uint8_t& flag) const
+{
+    const auto flags = static_cast<pbr::PathVisualizer::Flags>(flag);
 
-const scene_rdl2::math::Color& PathVisualizerManager::getCameraRayColor() const { return mParams->mCameraRayColor; }
-const scene_rdl2::math::Color& PathVisualizerManager::getSpecularRayColor() const { return mParams->mSpecularRayColor; }
-const scene_rdl2::math::Color& PathVisualizerManager::getDiffuseRayColor() const { return mParams->mDiffuseRayColor; }
-const scene_rdl2::math::Color& PathVisualizerManager::getBsdfSampleColor() const { return mParams->mBsdfSampleColor; }
-const scene_rdl2::math::Color& PathVisualizerManager::getLightSampleColor() const { return mParams->mLightSampleColor; }
+    if (pbr::PathVisualizer::isCameraRay(flags)) { return true; }
+    if (pbr::PathVisualizer::isIndirectSpecularRay(flags)) { return getShowIndirectSpecularRays(); }
+    if (pbr::PathVisualizer::isIndirectDiffuseRay(flags)) { return getShowIndirectDiffuseRays(); }
+    if (pbr::PathVisualizer::isDirectSpecularRay(flags)) { return getShowDirectSpecularRays(); }
+    if (pbr::PathVisualizer::isDirectDiffuseRay(flags)) { return getShowDirectDiffuseRays(); }
+    if (pbr::PathVisualizer::isDirectLightRay(flags)) { return getShowDirectLightRays(); }
+    if (pbr::PathVisualizer::isSpecularSample(flags)) { return getShowSpecularSamples(); }
+    if (pbr::PathVisualizer::isDiffuseSample(flags)) { return getShowDiffuseSamples(); }
+    if (pbr::PathVisualizer::isLightSample(flags)) { return getShowLightSamples(); }
 
+    return true;
+}
+
+bool PathVisualizerManager::getShowDirectRays() const { return mParams->mDirectRaysOn; }
+bool PathVisualizerManager::getShowIndirectRays() const { return mParams->mIndirectRaysOn; }
+bool PathVisualizerManager::getShowSamples() const { return mParams->mSamplesOn; }
+bool PathVisualizerManager::getShowIndirectSpecularRays() const
+{ 
+    return mParams->mIndirectRaysOn && mParams->mIndirectSpecularRaysOn;
+}
+bool PathVisualizerManager::getShowIndirectDiffuseRays() const
+{ 
+    return mParams->mIndirectRaysOn && mParams->mIndirectDiffuseRaysOn;
+}
+bool PathVisualizerManager::getShowDirectSpecularRays() const
+{ 
+    return mParams->mDirectRaysOn && mParams->mDirectSpecularRaysOn;
+}
+bool PathVisualizerManager::getShowDirectDiffuseRays() const
+{
+    return mParams->mDirectRaysOn && mParams->mDirectDiffuseRaysOn;
+}
+bool PathVisualizerManager::getShowDirectLightRays() const
+{
+    return mParams->mDirectRaysOn && mParams->mDirectLightRaysOn;
+}
+bool PathVisualizerManager::getShowSpecularSamples() const
+{
+    return mParams->mSamplesOn && mParams->mSpecularSamplesOn;
+}
+bool PathVisualizerManager::getShowDiffuseSamples() const
+{
+    return mParams->mSamplesOn && mParams->mDiffuseSamplesOn;
+}
+bool PathVisualizerManager::getShowLightSamples() const
+{
+    return mParams->mSamplesOn && mParams->mLightSamplesOn;
+}
+
+const scene_rdl2::math::Color& PathVisualizerManager::getCameraRayColor() const
+{
+    return mParams->mCameraRayColor;
+}
+const scene_rdl2::math::Color& PathVisualizerManager::getIndirectSpecularRayColor() const
+{
+    return mParams->mIndirectSpecularRayColor;
+}
+const scene_rdl2::math::Color& PathVisualizerManager::getIndirectDiffuseRayColor() const
+{
+    return mParams->mIndirectDiffuseRayColor;
+}
+const scene_rdl2::math::Color& PathVisualizerManager::getDirectSpecularRayColor() const
+{
+    return mParams->mDirectSpecularRayColor;
+}
+const scene_rdl2::math::Color& PathVisualizerManager::getDirectDiffuseRayColor() const
+{
+    return mParams->mDirectDiffuseRayColor;
+}
+const scene_rdl2::math::Color& PathVisualizerManager::getDirectLightRayColor() const
+{
+    return mParams->mDirectLightRayColor;
+}
+
+float PathVisualizerManager::getMaxRayLength() const { return mParams->mMaxRayLength; }
 float PathVisualizerManager::getHiddenLineOpacity() const { return mParams->mHiddenLineOpacity; }
 float PathVisualizerManager::getLineWidth() const { return mParams->mLineWidth; }
 
@@ -346,6 +454,8 @@ bool PathVisualizerManager::getUseSceneSamples() const { return mParams->mUseSce
 uint32_t PathVisualizerManager::getPixelSamples() const { return std::sqrt(mParams->mPixelSamples); }
 uint32_t PathVisualizerManager::getLightSamples() const { return std::sqrt(mParams->mLightSamples); }
 uint32_t PathVisualizerManager::getBsdfSamples() const  { return std::sqrt(mParams->mBsdfSamples); }
+
+uint32_t PathVisualizerManager::getSelectedNode() const { return mSelectedNode; }
 
 /// ------------------------- UI setters --------------------------------- //
 
@@ -371,40 +481,116 @@ void PathVisualizerManager::setMaxDepth(int depth, bool update)
     if (update) { startSimulation(); }
 }
 
-void PathVisualizerManager::setShowSpecularRays(bool flag) { mParams->mSpecularRaysOn = flag; }
-void PathVisualizerManager::setShowDiffuseRays(bool flag) { mParams->mDiffuseRaysOn = flag; }
-void PathVisualizerManager::setShowBsdfSamples(bool flag) { mParams->mBsdfSamplesOn = flag; }
-void PathVisualizerManager::setShowLightSamples(bool flag) { mParams->mLightSamplesOn = flag; }
+void PathVisualizerManager::setShowDirectRays(bool flag)
+{
+    mParams->mDirectRaysOn = flag;
+    startSimulation();
+}
+void PathVisualizerManager::setShowIndirectRays(bool flag)
+{
+    mParams->mIndirectRaysOn = flag;
+    startSimulation();
+}
+void PathVisualizerManager::setShowSamples(bool flag)
+{
+    mParams->mSamplesOn = flag;
+    startSimulation();
+}
+void PathVisualizerManager::setShowIndirectSpecularRays(bool flag)
+{
+    mParams->mIndirectSpecularRaysOn = flag;
+    startSimulation();
+}
+void PathVisualizerManager::setShowIndirectDiffuseRays(bool flag)
+{
+    mParams->mIndirectDiffuseRaysOn = flag;
+    startSimulation();
+}
+void PathVisualizerManager::setShowDirectSpecularRays(bool flag)
+{
+    mParams->mDirectSpecularRaysOn = flag;
+    startSimulation();
+}
+void PathVisualizerManager::setShowDirectDiffuseRays(bool flag)
+{
+    mParams->mDirectDiffuseRaysOn = flag;
+    startSimulation();
+}
+void PathVisualizerManager::setShowDirectLightRays(bool flag)
+{
+    mParams->mDirectLightRaysOn = flag;
+    startSimulation();
+}
+void PathVisualizerManager::setShowSpecularSamples(bool flag)
+{
+    mParams->mSpecularSamplesOn = flag;
+    startSimulation();
+}
+void PathVisualizerManager::setShowDiffuseSamples(bool flag)
+{
+    mParams->mDiffuseSamplesOn = flag;
+    startSimulation();
+}
+void PathVisualizerManager::setShowLightSamples(bool flag)
+{
+    mParams->mLightSamplesOn = flag;
+    startSimulation();
+}
 
-void PathVisualizerManager::setCameraRayColor(scene_rdl2::math::Color color) { mParams->mCameraRayColor = color; }
-void PathVisualizerManager::setSpecularRayColor(scene_rdl2::math::Color color) { mParams->mSpecularRayColor = color; }
-void PathVisualizerManager::setDiffuseRayColor(scene_rdl2::math::Color color) { mParams->mDiffuseRayColor = color; }
-void PathVisualizerManager::setBsdfSampleColor(scene_rdl2::math::Color color) { mParams->mBsdfSampleColor = color; }
-void PathVisualizerManager::setLightSampleColor(scene_rdl2::math::Color color) { mParams->mLightSampleColor = color; }
+void PathVisualizerManager::setCameraRayColor(const scene_rdl2::math::Color color)
+{ 
+    mParams->mCameraRayColor = color;
+}
+void PathVisualizerManager::setIndirectSpecularRayColor(const scene_rdl2::math::Color color)
+{
+    mParams->mIndirectSpecularRayColor = color;
+}
+void PathVisualizerManager::setIndirectDiffuseRayColor(const scene_rdl2::math::Color color)
+{
+    mParams->mIndirectDiffuseRayColor = color;
+}
+void PathVisualizerManager::setDirectSpecularRayColor(const scene_rdl2::math::Color color)
+{
+    mParams->mDirectSpecularRayColor = color;
+}
+void PathVisualizerManager::setDirectDiffuseRayColor(const scene_rdl2::math::Color color)
+{
+    mParams->mDirectDiffuseRayColor = color;
+}
+void PathVisualizerManager::setDirectLightRayColor(const scene_rdl2::math::Color color)
+{
+    mParams->mDirectLightRayColor = color;
+}
 
+void PathVisualizerManager::setMaxRayLength(const float length, const bool update)
+{
+    mParams->mMaxRayLength = length;
+    if (update) { startSimulation(); }
+}
 void PathVisualizerManager::setLineWidth(const float value) { mParams->mLineWidth = value; }
-void PathVisualizerManager::setHiddenLineOpacity(float value) { mParams->mHiddenLineOpacity = value; }
-
-void PathVisualizerManager::setUseSceneSamples(bool useSceneSamples, bool update)
+void PathVisualizerManager::setHiddenLineOpacity(const float value) { mParams->mHiddenLineOpacity = value; }
+void PathVisualizerManager::setUseSceneSamples(const bool useSceneSamples, const bool update)
 { 
     mParams->mUseSceneSamples = useSceneSamples; 
     if (update) { startSimulation(); }
 }
-void PathVisualizerManager::setPixelSamples(uint32_t samples, bool update)
+void PathVisualizerManager::setPixelSamples(const uint32_t samples, const bool update)
 { 
     mParams->mPixelSamples = samples * samples; 
     if (update) { startSimulation(); }
 }
-void PathVisualizerManager::setLightSamples(uint32_t samples, bool update)
+void PathVisualizerManager::setLightSamples(const uint32_t samples, const bool update)
 { 
     mParams->mLightSamples = samples * samples; 
     if (update) { startSimulation(); }
 }
-void PathVisualizerManager::setBsdfSamples(uint32_t samples, bool update)
+void PathVisualizerManager::setBsdfSamples(const uint32_t samples, const bool update)
 { 
     mParams->mBsdfSamples = samples * samples; 
     if (update) { startSimulation(); }
 }
+
+void PathVisualizerManager::setSelectedNode(const int nodeIndex) { mSelectedNode = nodeIndex; }
 
 //------------------------------------------------------------------------------------------
 
@@ -417,16 +603,16 @@ PathVisualizerManager::setupSimGlobalInfo(scene_rdl2::grid_util::PathVisSimGloba
     globalInfo.setSamples(mParams->mPixelX, mParams->mPixelY, mParams->mMaxDepth,
                           mParams->mPixelSamples, mParams->mLightSamples, mParams->mBsdfSamples);
     globalInfo.setRayTypeSelection(mParams->mUseSceneSamples,
-                                   mParams->mOcclusionRaysOn,
-                                   mParams->mSpecularRaysOn,
-                                   mParams->mDiffuseRaysOn,
-                                   mParams->mBsdfSamplesOn,
-                                   mParams->mLightSamplesOn);
+                                   mParams->mDirectRaysOn,
+                                   mParams->mIndirectSpecularRaysOn,
+                                   mParams->mIndirectDiffuseRaysOn,
+                                   mParams->mDirectDiffuseRaysOn || mParams->mDirectSpecularRaysOn,
+                                   mParams->mDirectLightRaysOn);
     globalInfo.setColor(mParams->mCameraRayColor,
-                        mParams->mSpecularRayColor,
-                        mParams->mDiffuseRayColor,
-                        mParams->mBsdfSampleColor,
-                        mParams->mLightSampleColor);
+                        mParams->mIndirectSpecularRayColor,
+                        mParams->mIndirectDiffuseRayColor,
+                        mParams->mDirectDiffuseRayColor,
+                        mParams->mDirectLightRayColor);
     globalInfo.setLineWidth(mParams->mLineWidth);
 }
 

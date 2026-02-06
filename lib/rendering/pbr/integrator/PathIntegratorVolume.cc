@@ -1,4 +1,4 @@
-// Copyright 2023-2024 DreamWorks Animation LLC
+// Copyright 2023-2026 DreamWorks Animation LLC
 // SPDX-License-Identifier: Apache-2.0
 
 ///
@@ -167,7 +167,7 @@ PathIntegrator::estimateInScatteringSourceTermDirect(pbr::TLState *pbrTls, const
                     pdfLight;
             }
             if (pbrTls->mFs->mSimulationMode) {
-                pbrTls->mFs->mScene->recordOcclusionRay(shadowRay, sp.mPixel, /* lightSampleFlag = */ true, isOccluded);
+                pbrTls->mFs->mScene->recordDirectLightRay(shadowRay, sp.mPixel, isOccluded);
             }
         }
     }

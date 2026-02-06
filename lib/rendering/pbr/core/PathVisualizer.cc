@@ -1,4 +1,4 @@
-// Copyright 2025 DreamWorks Animation LLC
+// Copyright 2025-2026 DreamWorks Animation LLC
 // SPDX-License-Identifier: Apache-2.0
 
 #include "PathVisualizer.h"
@@ -48,25 +48,38 @@ std::ostream& operator<<(std::ostream& os, const State& state) {
 }
 
 std::ostream& operator<<(std::ostream& os, const PathVisualizer::Flags& flag) {
-    switch(flag) {
-        case PathVisualizer::Flags::NONE:            return os << "NONE";
-        case PathVisualizer::Flags::CAMERA:          return os << "CAMERA";
-        case PathVisualizer::Flags::INACTIVE:        return os << "INACTIVE";
-        case PathVisualizer::Flags::DIFFUSE:         return os << "DIFFUSE";
-        case PathVisualizer::Flags::SPECULAR:        return os << "SPECULAR";
-        case PathVisualizer::Flags::BSDF_SAMPLE:     return os << "BSDF_SAMPLE";
-        case PathVisualizer::Flags::LIGHT_SAMPLE:    return os << "LIGHT_SAMPLE";
-        default:                                     return os << "UNKNOWN FLAG";
-    }
+    if (PathVisualizer::matchesLineStatus(flag, PathVisualizer::Flags::INACTIVE))     { os << "INACTIVE "; }
+
+    if (PathVisualizer::matchesOriginType(flag, PathVisualizer::Flags::CAMERA))       { os << "CAMERA "; }
+    if (PathVisualizer::matchesOriginType(flag, PathVisualizer::Flags::DIFFUSE))      { os << "DIFFUSE "; }
+    if (PathVisualizer::matchesOriginType(flag, PathVisualizer::Flags::SPECULAR))     { os << "SPECULAR "; }
+    if (PathVisualizer::matchesOriginType(flag, PathVisualizer::Flags::LIGHT))        { os << "LIGHT "; }
+
+    if (PathVisualizer::matchesRayType(flag, PathVisualizer::Flags::DIRECT))          { os << "DIRECT "; }
+    if (PathVisualizer::matchesRayType(flag, PathVisualizer::Flags::INDIRECT))        { os << "INDIRECT "; }
+    if (PathVisualizer::matchesRayType(flag, PathVisualizer::Flags::SAMPLE))          { os << "SAMPLE "; }
+    return os;
 }
 
 std::ostream& operator<<(std::ostream& os, const PathVisualizer::LineSegment& line) {
     os << "\nLineSegment {\n";
+    os << "  mNodeIndex: " << line.mNodeIndex << ",\n";
     os << "  mPx1: (" << line.mPx1.x << ", " << line.mPx1.y << "),\n";
     os << "  mPx2: (" << line.mPx2.x << ", " << line.mPx2.y << "),\n";
     os << "  mFlags: " << line.mFlags << ",\n";
     os << "  mDrawEndpoint: " << line.mDrawEndpoint << ",\n";
     os << "  mAlpha: " << line.mAlpha << ",\n";
+    os << "}\n";
+    return os;
+}
+
+std::ostream& operator<<(std::ostream& os, const PathVisualizer::Node& node) {
+    os << "\nNode {\n";
+    os << "  mRayOriginIndex: " << node.mRayOriginIndex << ",\n";
+    os << "  mRayEndpointIndex: " << node.mRayEndpointIndex << ",\n";
+    os << "  mRayIsectIndex: " << node.mRayIsectIndex << ",\n";
+    os << "  mDepth: " << static_cast<int>(node.mDepth) << ",\n";
+    os << "  mFlags: " << node.mFlags << ",\n";
     os << "}\n";
     return os;
 }
@@ -87,17 +100,25 @@ PathVisualizerParams::show() const
          << "  mLightSamples:" << mLightSamples << '\n'
          << "  mBsdfSamples:" << mBsdfSamples << '\n'
          << "  mUseSceneSamples:" << boolStr(mUseSceneSamples) << '\n'
-         << "  mOcclusionRaysOn:" << boolStr(mOcclusionRaysOn) << '\n'
-         << "  mSpecularRaysOn:" << boolStr(mSpecularRaysOn) << '\n'
-         << "  mDiffuseRaysOn:" << boolStr(mDiffuseRaysOn) << '\n'
-         << "  mBsdfSamplesOn:" << boolStr(mBsdfSamplesOn) << '\n'
+         << "  mDirectRaysOn:" << boolStr(mDirectRaysOn) << '\n'
+         << "  mIndirectRaysOn:" << boolStr(mIndirectRaysOn) << '\n'
+         << "  mSamplesOn:" << boolStr(mSamplesOn) << '\n'
+         << "  mIndirectSpecularRaysOn:" << boolStr(mIndirectSpecularRaysOn) << '\n'
+         << "  mIndirectDiffuseRaysOn:" << boolStr(mIndirectDiffuseRaysOn) << '\n'
+         << "  mDirectSpecularRaysOn:" << boolStr(mDirectSpecularRaysOn) << '\n'
+         << "  mDirectDiffuseRaysOn:" << boolStr(mDirectDiffuseRaysOn) << '\n'
+         << "  mDirectLightRaysOn:" << boolStr(mDirectLightRaysOn) << '\n'
+         << "  mDiffuseSamplesOn:" << boolStr(mDiffuseSamplesOn) << '\n'
+         << "  mSpecularSamplesOn:" << boolStr(mSpecularSamplesOn) << '\n'
          << "  mLightSamplesOn:" << boolStr(mLightSamplesOn) << '\n'
          << "  mCameraRayColor:" << mCameraRayColor << '\n'
-         << "  mSpecularRayColor:" << mSpecularRayColor << '\n'
-         << "  mDiffuseRayColor:" << mDiffuseRayColor << '\n'
-         << "  mBsdfSampleColor:" << mBsdfSampleColor << '\n'
-         << "  mLightSampleColor:" << mLightSampleColor << '\n'
+         << "  mIndirectSpecularRayColor:" << mIndirectSpecularRayColor << '\n'
+         << "  mIndirectDiffuseRayColor:" << mIndirectDiffuseRayColor << '\n'
+         << "  mDirectSpecularRayColor:" << mDirectSpecularRayColor << '\n'
+         << "  mDirectDiffuseRayColor:" << mDirectDiffuseRayColor << '\n'
+         << "  mDirectLightRayColor:" << mDirectLightRayColor << '\n'
          << "  mLineWidth:" << mLineWidth << '\n'
+         << "  mMaxRayLength:" << mMaxRayLength << '\n'
          << "  mHiddenLineOpacity:" << mHiddenLineOpacity << '\n'
          << "  mPixelXmin:" << mPixelXmin << '\n'
          << "  mPixelYmin:" << mPixelYmin << '\n'
@@ -234,30 +255,69 @@ PathVisualizerParams::parserConfigure()
 
     mParser.opt("useSceneSamplesSw", "<on|off>", "set useSceneSamples condition",
                 [&](Arg& arg) { return setSingleBool(arg, mOn, mUseSceneSamples, "useSceneSamplesSw="); });
+
+    // ---- Included for backwards compatibility ----
     mParser.opt("occlusionRaysSw", "<on|off>", "set occlusionRays condition",
-                [&](Arg& arg) { return setSingleBool(arg, mOn, mOcclusionRaysOn, "occlusionRaysSw="); });
+                [&](Arg& arg) { return setSingleBool(arg, mOn, mDirectRaysOn, "occlusionRaysSw="); });
     mParser.opt("specularRaysSw", "<on|off>", "set specularRays condition",
-                [&](Arg& arg) { return setSingleBool(arg, mOn, mSpecularRaysOn, "specularRaysSw="); });
+                [&](Arg& arg) { return setSingleBool(arg, mOn, mIndirectSpecularRaysOn, "specularRaysSw="); });
     mParser.opt("diffuseRaysSw", "<on|off>", "set diffuseRays condition",
-                [&](Arg& arg) { return setSingleBool(arg, mOn, mDiffuseRaysOn, "diffuseRaysSw="); });
+                [&](Arg& arg) { return setSingleBool(arg, mOn, mIndirectDiffuseRaysOn, "diffuseRaysSw="); });
     mParser.opt("bsdfSamplesSw", "<on|off>", "set bsdfSamples condition",
-                [&](Arg& arg) { return setSingleBool(arg, mOn, mBsdfSamplesOn, "bsdfSamplesSw="); });
+                [&](Arg& arg) { return setSingleBool(arg, mOn, mDirectDiffuseRaysOn, "bsdfSamplesSw="); });
+    // ----------------------------------------------
+    
+    mParser.opt("directRaysSw", "<on|off>", "set directRays condition",
+                [&](Arg& arg) { return setSingleBool(arg, mOn, mDirectRaysOn, "directRaysSw="); });
+    mParser.opt("indirectRaysSw", "<on|off>", "set indirectRays condition",
+                [&](Arg& arg) { return setSingleBool(arg, mOn, mIndirectRaysOn, "indirectRaysSw="); });
+    mParser.opt("samplesSw", "<on|off>", "set samples condition",
+                [&](Arg& arg) { return setSingleBool(arg, mOn, mSamplesOn, "samplesSw="); });
+    mParser.opt("indirectSpecularRaysSw", "<on|off>", "set indirectSpecularRays condition",
+                [&](Arg& arg) { return setSingleBool(arg, mOn, mIndirectSpecularRaysOn, "indirectSpecularRaysSw="); });
+    mParser.opt("indirectDiffuseRaysSw", "<on|off>", "set indirectDiffuseRays condition",
+                [&](Arg& arg) { return setSingleBool(arg, mOn, mIndirectDiffuseRaysOn, "indirectDiffuseRaysSw="); });
+    mParser.opt("directSpecularRaysSw", "<on|off>", "set directSpecularRays condition",
+                [&](Arg& arg) { return setSingleBool(arg, mOn, mDirectSpecularRaysOn, "directSpecularRaysSw="); });
+    mParser.opt("directDiffuseRaysSw", "<on|off>", "set directDiffuseRays condition",
+                [&](Arg& arg) { return setSingleBool(arg, mOn, mDirectDiffuseRaysOn, "directDiffuseRaysSw="); });
+    mParser.opt("directLightRaysSw", "<on|off>", "set directLightRays condition",
+                [&](Arg& arg) { return setSingleBool(arg, mOn, mDirectLightRaysOn, "directLightRaysSw="); });
+    mParser.opt("diffuseSamplesSw", "<on|off>", "set diffuseSamples condition",
+                [&](Arg& arg) { return setSingleBool(arg, mOn, mDiffuseSamplesOn, "diffuseSamplesSw="); });
+    mParser.opt("specularSamplesSw", "<on|off>", "set specularSamples condition",
+                [&](Arg& arg) { return setSingleBool(arg, mOn, mSpecularSamplesOn, "specularSamplesSw="); });
     mParser.opt("lightSamplesSw", "<on|off>", "set lightSamples condition",
                 [&](Arg& arg) { return setSingleBool(arg, mOn, mLightSamplesOn, "lightSamplesSw="); });
 
+    // ---- Included for backwards compatibility ----
+    mParser.opt("specularRayColor", "<r> <g> <b>", "set specularRayColor normalized 0~1 col value",
+                [&](Arg& arg) { return setColorArg(arg, mOn, mIndirectSpecularRayColor, "specularRayColor="); });
+    mParser.opt("diffuseRayColor", "<r> <g> <b>", "set diffuseRayColor normalized 0~1 col value",
+                [&](Arg& arg) { return setColorArg(arg, mOn, mIndirectDiffuseRayColor, "diffuseRayColor="); });
+    mParser.opt("bsdfSampleColor", "<r> <g> <b>", "set bsdfSampleColor normalized 0~1 col value",
+                [&](Arg& arg) { return setColorArg(arg, mOn, mDirectDiffuseRayColor, "bsdfSampleColor="); });
+    mParser.opt("lightSampleColor", "<r> <g> <b>", "set lightSampleColor normalized 0~1 col value",
+                [&](Arg& arg) { return setColorArg(arg, mOn, mDirectLightRayColor, "lightSampleColor="); });
+    // ----------------------------------------------
+    
     mParser.opt("cameraRayColor", "<r> <g> <b>", "set cameraRayColor normalized 0~1 col value",
                 [&](Arg& arg) { return setColorArg(arg, mOn, mCameraRayColor, "cameraRayColor="); });
-    mParser.opt("specularRayColor", "<r> <g> <b>", "set specularRayColor normalized 0~1 col value",
-                [&](Arg& arg) { return setColorArg(arg, mOn, mSpecularRayColor, "specularRayColor="); });
-    mParser.opt("diffuseRayColor", "<r> <g> <b>", "set diffuseRayColor normalized 0~1 col value",
-                [&](Arg& arg) { return setColorArg(arg, mOn, mDiffuseRayColor, "diffuseRayColor="); });
-    mParser.opt("bsdfSampleColor", "<r> <g> <b>", "set bsdfSampleColor normalized 0~1 col value",
-                [&](Arg& arg) { return setColorArg(arg, mOn, mBsdfSampleColor, "bsdfSampleColor="); });
-    mParser.opt("lightSampleColor", "<r> <g> <b>", "set lightSampleColor normalized 0~1 col value",
-                [&](Arg& arg) { return setColorArg(arg, mOn, mLightSampleColor, "lightSampleColor="); });
+    mParser.opt("indirectSpecularRayColor", "<r> <g> <b>", "set indirectSpecularRayColor normalized 0~1 col value",
+                [&](Arg& arg) { return setColorArg(arg, mOn, mIndirectSpecularRayColor, "indirectSpecularRayColor="); });
+    mParser.opt("indirectDiffuseRayColor", "<r> <g> <b>", "set indirectDiffuseRayColor normalized 0~1 col value",
+                [&](Arg& arg) { return setColorArg(arg, mOn, mIndirectDiffuseRayColor, "indirectDiffuseRayColor="); });
+    mParser.opt("directSpecularRayColor", "<r> <g> <b>", "set directSpecularRayColor normalized 0~1 col value",
+                [&](Arg& arg) { return setColorArg(arg, mOn, mDirectSpecularRayColor, "directSpecularRayColor="); });
+    mParser.opt("directDiffuseRayColor", "<r> <g> <b>", "set directDiffuseRayColor normalized 0~1 col value",
+                [&](Arg& arg) { return setColorArg(arg, mOn, mDirectDiffuseRayColor, "directDiffuseRayColor="); });
+    mParser.opt("directLightRayColor", "<r> <g> <b>", "set directLightRayColor normalized 0~1 col value",
+                [&](Arg& arg) { return setColorArg(arg, mOn, mDirectLightRayColor, "directLightRayColor="); });
 
     mParser.opt("lineWidth", "<w>", "set line width",
                 [&](Arg& arg) { return setSingleFloat(arg, mOn, mLineWidth, "lineWidth="); });
+    mParser.opt("maxRayLength", "<length>", "set max ray length",
+                [&](Arg& arg) { return setSingleFloat(arg, mOn, mMaxRayLength, "maxRayLength="); });
     mParser.opt("hiddenLineOpacity", "<opacity>", "set hidden line opacity",
                 [&](Arg& arg) { return setSingleFloat(arg, mOn, mHiddenLineOpacity, "hiddenLineOpacity="); });
 
@@ -279,16 +339,37 @@ PathVisualizerParams::parserConfigure()
     mParser.opt("deltaMaxDepth", "<delta>", "delta add max depth",
                 [&](Arg& arg) { return setDeltaSampleArg(arg, mOn, mMaxDepth, "maxDepth="); });
 
+    // ---- Included for backwards compatibility ----
+    mParser.opt("toggleOcclusionRays", "", "toggle occlusionRays",
+                [&](Arg& arg) { return setToggleArg(arg, mOn, mDirectRaysOn, "occlusionRays="); });
+    mParser.opt("toggleSpecularRays", "", "toggle specularRays",
+                [&](Arg& arg) { return setToggleArg(arg, mOn, mIndirectSpecularRaysOn, "specularRays="); });
+    mParser.opt("toggleDiffuseRays", "", "toggle diffuseRays",
+                [&](Arg& arg) { return setToggleArg(arg, mOn, mIndirectDiffuseRaysOn, "diffuseRays="); });
+    mParser.opt("toggleBsdfSamples", "", "toggle bsdfSamples",
+                [&](Arg& arg) { return setToggleArg(arg, mOn, mDirectDiffuseRaysOn, "bsdfSamples="); });
+    // ----------------------------------------------
+
     mParser.opt("toggleUseSceneSamples", "", "toggle useSceneSamples",
                 [&](Arg& arg) { return setToggleArg(arg, mOn, mUseSceneSamples, "useSceneSamples="); });
-    mParser.opt("toggleOcclusionRays", "", "toggle occlusionRays",
-                [&](Arg& arg) { return setToggleArg(arg, mOn, mOcclusionRaysOn, "occlusionRays="); });
-    mParser.opt("toggleSpecularRays", "", "toggle specularRays",
-                [&](Arg& arg) { return setToggleArg(arg, mOn, mSpecularRaysOn, "specularRays="); });
-    mParser.opt("toggleDiffuseRays", "", "toggle diffuseRays",
-                [&](Arg& arg) { return setToggleArg(arg, mOn, mDiffuseRaysOn, "diffuseRays="); });
-    mParser.opt("toggleBsdfSamples", "", "toggle bsdfSamples",
-                [&](Arg& arg) { return setToggleArg(arg, mOn, mBsdfSamplesOn, "bsdfSamples="); });
+    mParser.opt("toggleDirectRays", "", "toggle directRays",
+                [&](Arg& arg) { return setToggleArg(arg, mOn, mDirectRaysOn, "directRays="); });
+    mParser.opt("toggleIndirectRays", "", "toggle indirectRays",
+                [&](Arg& arg) { return setToggleArg(arg, mOn, mIndirectRaysOn, "indirectRays="); });
+    mParser.opt("toggleIndirectSpecularRays", "", "toggle indirect specularRays",
+                [&](Arg& arg) { return setToggleArg(arg, mOn, mIndirectSpecularRaysOn, "indirectSpecularRays="); });
+    mParser.opt("toggleIndirectDiffuseRays", "", "toggle indirect diffuseRays",
+                [&](Arg& arg) { return setToggleArg(arg, mOn, mIndirectDiffuseRaysOn, "indirectDiffuseRays="); });
+    mParser.opt("toggleDirectSpecularRays", "", "toggle direct specularRays",
+                [&](Arg& arg) { return setToggleArg(arg, mOn, mDirectSpecularRaysOn, "directSpecularRays="); });
+    mParser.opt("toggleDirectDiffuseRays", "", "toggle direct diffuseRays",
+                [&](Arg& arg) { return setToggleArg(arg, mOn, mDirectDiffuseRaysOn, "directDiffuseRays="); });
+    mParser.opt("toggleDirectLightRays", "", "toggle direct lightRays",
+                [&](Arg& arg) { return setToggleArg(arg, mOn, mDirectLightRaysOn, "directLightRays="); });
+    mParser.opt("toggleDiffuseSamples", "", "toggle diffuseSamples",
+                [&](Arg& arg) { return setToggleArg(arg, mOn, mDiffuseSamplesOn, "diffuseSamples="); });
+    mParser.opt("toggleSpecularSamples", "", "toggle specularSamples",
+                [&](Arg& arg) { return setToggleArg(arg, mOn, mSpecularSamplesOn, "specularSamples="); });
     mParser.opt("toggleLightSamples", "", "toggle lightSamples",
                 [&](Arg& arg) { return setToggleArg(arg, mOn, mLightSamplesOn, "lightSamples="); });
 }
@@ -298,7 +379,6 @@ PathVisualizerParams::parserConfigure()
 PathVisualizer::PathVisualizer() 
     : mState(State::NONE), 
       mCameraIsectIndex(-1), 
-      mMaxRayLength(-1.f), 
       mWidth(0), 
       mHeight(0), 
       mParams(nullptr),
@@ -334,16 +414,15 @@ PathVisualizer::flagsToRayType(const Flags& flags)
 {
     using RayType = scene_rdl2::grid_util::VectorPacketLineStatus::RayType;
 
-    switch (flags) {
-    case Flags::CAMERA : return RayType::CAMERA;
-    case Flags::INACTIVE : return RayType::INACTIVE;
-    case Flags::DIFFUSE : return RayType::DIFFUSE;
-    case Flags::SPECULAR : return RayType::SPECULAR;
-    case Flags::BSDF_SAMPLE : return RayType::BSDF_SAMPLE;
-    case Flags::LIGHT_SAMPLE : return RayType::LIGHT_SAMPLE;
-    case Flags::NONE :
-    default : return RayType::NONE;
-    }
+    if (isIndirectDiffuseRay(flags)) return RayType::DIFFUSE;
+    if (isIndirectSpecularRay(flags)) return RayType::SPECULAR;
+    if (isDirectDiffuseRay(flags)) return RayType::BSDF_SAMPLE;
+    if (isDirectSpecularRay(flags)) return RayType::BSDF_SAMPLE;
+    if (isDirectLightRay(flags)) return RayType::LIGHT_SAMPLE;
+    if (isCameraRay(flags)) return RayType::CAMERA;
+    if (matchesLineStatus(flags, Flags::INACTIVE)) return RayType::INACTIVE;
+    
+    return RayType::NONE;
 }
 
 scene_rdl2::math::Color
@@ -362,14 +441,13 @@ PathVisualizer::getColorByFlags(const uint8_t& flags) const
 }
 
 void PathVisualizer::initialize(const unsigned int width, const unsigned int height, 
-                                const PathVisualizerParams* params, const float sceneSize) 
+                                const PathVisualizerParams* params) 
 {
     MNRY_ASSERT(width != 0 && height != 0);
 
     mWidth = width;
     mHeight = height;
     mParams = params;
-    mMaxRayLength = sceneSize;
     mState = State::READY;
 }
 
@@ -393,27 +471,89 @@ bool PathVisualizer::setUpFrustum(const Camera& cam)
     return true;
 }
 
-void PathVisualizer::recordOcclusionRay(const mcrt_common::Ray& ray, const Scene& scene, 
-                                        const uint32_t pixel, const bool lightSampleFlag, const bool occlusionFlag)
+void
+PathVisualizer::recordCameraRay(const mcrt_common::Ray& ray, const Scene& scene, const uint32_t pixel)
 {
-    recordRay(ray, scene, pixel, /* lobeType */ 0, lightSampleFlag, occlusionFlag);
+    Flags flags;
+    setOriginType(flags, Flags::CAMERA);
+    recordRay(ray, scene, pixel, flags, /*occlusionFlag*/ false);
 }
 
-void PathVisualizer::recordRegularRay(const mcrt_common::Ray& ray, const Scene& scene,
-                                      const uint32_t pixel, const int lobeType)
+void
+PathVisualizer::recordIndirectRay(const mcrt_common::Ray& ray, const Scene& scene, 
+                                  const uint32_t pixel, const int lobeType)
 {
-    recordRay(ray, scene, pixel, lobeType, /*lightSampleFlag*/ false, /*occlusionFlag*/ false);
+    Flags flags;
+    setRayType(flags, Flags::INDIRECT);
+
+    if (lobeIsDiffuse(lobeType)) {
+        setOriginType(flags, Flags::DIFFUSE);
+        recordRay(ray, scene, pixel, flags, /*occlusionFlag*/ false);
+    } else if (lobeIsSpecular(lobeType)){
+        setOriginType(flags, Flags::SPECULAR);
+        recordRay(ray, scene, pixel, flags, /*occlusionFlag*/ false);
+    }
+}
+
+void
+PathVisualizer::recordDirectBsdfRay(const mcrt_common::Ray& ray, const Scene& scene, const uint32_t pixel, 
+                                    const int lobeType, const bool occlusionFlag)
+{
+    Flags flags;
+    setRayType(flags, Flags::DIRECT);
+
+    if (lobeIsDiffuse(lobeType)) {
+        setOriginType(flags, Flags::DIFFUSE);
+        recordRay(ray, scene, pixel, flags, occlusionFlag);
+    } else if (lobeIsSpecular(lobeType)){
+        setOriginType(flags, Flags::SPECULAR);
+        recordRay(ray, scene, pixel, flags, occlusionFlag);
+    }
+}
+
+void
+PathVisualizer::recordDirectLightRay(const mcrt_common::Ray& ray, const Scene& scene, 
+                                     const uint32_t pixel, const bool occlusionFlag)
+{
+    Flags flags;
+    setRayType(flags, Flags::DIRECT);
+    setOriginType(flags, Flags::LIGHT);
+    recordRay(ray, scene, pixel, flags, occlusionFlag);
+}
+
+void
+PathVisualizer::recordBsdfSample(const mcrt_common::Ray& ray, const Scene& scene, 
+                                 const uint32_t pixel, const int lobeType)
+{
+    Flags flags;
+    setRayType(flags, Flags::SAMPLE);
+    
+    if (lobeIsDiffuse(lobeType)) {
+        setOriginType(flags, Flags::DIFFUSE);
+        recordRay(ray, scene, pixel, flags, /*occlusionFlag*/ false);
+    } else if (lobeIsSpecular(lobeType)){
+        setOriginType(flags, Flags::SPECULAR);
+        recordRay(ray, scene, pixel, flags, /*occlusionFlag*/ false);
+    }
+}
+
+void
+PathVisualizer::recordLightSample(const mcrt_common::Ray& ray, const Scene& scene, const uint32_t pixel)
+{
+    Flags flags;
+    setRayType(flags, Flags::SAMPLE);
+    setOriginType(flags, Flags::LIGHT);
+    recordRay(ray, scene, pixel, flags, /*occlusionFlag*/ false);
 }
 
 void PathVisualizer::recordRay(const mcrt_common::Ray& ray, const Scene& scene, 
-                               const uint32_t pixel, const int lobeType, 
-                               const bool lightSampleFlag, const bool occlusionFlag)
+                               const uint32_t pixel, Flags flags, const bool occlusionFlag)
 {
     MNRY_ASSERT(mState == State::RECORD);
     RenderTimer timer(mInRenderingTime);
 
     // Only record the ray if it matches the user parameters
-    if (!matchesParams(lobeType, lightSampleFlag, ray.getDepth())) {
+    if (!matchesParams(flags, ray.getDepth())) {
         return;
     }
 
@@ -421,20 +561,13 @@ void PathVisualizer::recordRay(const mcrt_common::Ray& ray, const Scene& scene,
     const uint32_t pixelID = uint32ToPixelY(pixel) * mWidth + uint32ToPixelX(pixel);
 
     // Calculate ray endpoints (render space)
-    const float tfar = std::min(ray.tfar, mMaxRayLength);
+    const float tfar = std::min(ray.tfar, mParams->mMaxRayLength);
     const Vec3f rayOrigin = ray.getOrigin();
     const Vec3f rayEnd = rayOrigin + scene_rdl2::math::normalize(ray.getDirection()) * tfar;
 
     // Compute world-space coordinates (bc we want these points to stay consistent even if the camera transform changes)
     const Vec3f rayOriginWorld = transformPoint(scene.getRender2World(), rayOrigin);
     const Vec3f rayEndWorld    = transformPoint(scene.getRender2World(), rayEnd);
-
-    // Set the flags
-    Flags flags;
-    const bool diffuseFlag  = lobeType & shading::BsdfLobe::DIFFUSE;
-    const bool specularFlag = (lobeType & shading::BsdfLobe::GLOSSY) | (lobeType & shading::BsdfLobe::MIRROR);
-    const bool cameraFlag = ray.getDepth() == 0;
-    setFlags(flags, diffuseFlag, specularFlag, lightSampleFlag, cameraFlag);
 
     {
         std::lock_guard<std::mutex> lock(mWriteLock);
@@ -454,10 +587,10 @@ void PathVisualizer::recordRay(const mcrt_common::Ray& ray, const Scene& scene,
 
 // ---------------------------------------------- FILTERING ------------------------------------------------------------
 
-bool PathVisualizer::matchesParams(const int lobeType, const bool lightSampleFlag, const int depth) const
+bool PathVisualizer::matchesParams(const Flags flags, const int depth) const
 {
     bool recordRay = depth <= mParams->mMaxDepth;
-    recordRay = recordRay && matchesFlags(lobeType, lightSampleFlag, depth);
+    recordRay = recordRay && matchesFlags(flags);
     return recordRay;
 }
 
@@ -497,7 +630,7 @@ bool PathVisualizer::pixelIsOccluded(const PixelCoordU& p, const PixelCoordI& p1
     }
 }
 
-uint8_t PathVisualizer::clipPoints(const int nodeIndex, Vec3f* outPoints, bool* clipStatus) const
+uint8_t PathVisualizer::clipPoints(const size_t nodeIndex, Vec3f* outPoints, bool* clipStatus) const
 {
     uint8_t numPoints = 0;
 
@@ -547,7 +680,7 @@ uint8_t PathVisualizer::clipPoints(const int nodeIndex, Vec3f* outPoints, bool* 
     return clippedLine ? numPoints : 0;
 }
 
-void PathVisualizer::addLineSegment(const unsigned nodeIndex,
+void PathVisualizer::addLineSegment(const size_t nodeIndex,
                                     const PosType startPosType,
                                     const PosType endPosType,
                                     const PixelCoordU& start, const PixelCoordU& end, const Flags& flags, 
@@ -560,10 +693,10 @@ void PathVisualizer::addLineSegment(const unsigned nodeIndex,
         return;
     }
     float lineOpacity = isOccluded ? mParams->mHiddenLineOpacity : 1.f;
-    mLines.push_back({start, end, flags, drawEndpoint, lineOpacity, nodeIndex, startPosType, endPosType});
+    mLines.push_back({nodeIndex, start, end, flags, drawEndpoint, lineOpacity, startPosType, endPosType});
 }
 
-void PathVisualizer::traceLine(const unsigned nodeIndex,
+void PathVisualizer::traceLine(const size_t nodeIndex,
                                const PosType startPosType,
                                const PosType endPosType,
                                const PixelCoordI& start, const PixelCoordI& end, 
@@ -667,9 +800,9 @@ void PathVisualizer::traceLine(const unsigned nodeIndex,
                    segmentStart, segmentEnd, flags, /* draw endpoint */ !endpointClipped, prevIsOccluded);
 }
 
-void PathVisualizer::generateLine(const int nodeIndex, const Scene* scene)
+void PathVisualizer::generateLine(const size_t nodeIndex, const Scene* scene)
 {
-    MNRY_ASSERT(nodeIndex >= 0 && nodeIndex < mNodes.size());
+    MNRY_ASSERT(nodeIndex < mNodes.size());
 
     const pbr::Camera* cam = scene->getCamera();
 
@@ -718,7 +851,10 @@ void PathVisualizer::generateLine(const int nodeIndex, const Scene* scene)
 
         // if the line has been split, the second part is the "inactive"
         // part of an occlusion ray
-        const Flags flags = i > 0 ? Flags::INACTIVE : mNodes[nodeIndex].mFlags;
+        Flags lineFlags = mNodes[nodeIndex].mFlags;
+        if (i > 0) {
+            setLineStatus(lineFlags, Flags::INACTIVE);
+        }
 
         PosType startPosType {PosType::UNKNOWN};
         PosType endPosType {PosType::UNKNOWN};
@@ -737,8 +873,8 @@ void PathVisualizer::generateLine(const int nodeIndex, const Scene* scene)
         if (clipStatus[i]) startPosType = PosType::UNKNOWN;
         if (clipStatus[i+1]) endPosType = PosType::UNKNOWN; 
 
-        traceLine(static_cast<unsigned>(nodeIndex), startPosType, endPosType,
-                  pixelEndpoints[i], pixelEndpoints[i+1], isOccludedFunc, flags, clipStatus[i+1]);
+        traceLine(nodeIndex, startPosType, endPosType, pixelEndpoints[i], pixelEndpoints[i+1], 
+                  isOccludedFunc, lineFlags, clipStatus[i+1]);
     }
 }
 
@@ -758,7 +894,7 @@ void PathVisualizer::generateLines(const Scene* scene)
 
     resetCameraIsectIndex();
 
-    rndr::simpleLoop (/*parallel*/ true, 0u, (unsigned) mNodes.size(), [&](int nodeIndex) {
+    rndr::simpleLoop (/*parallel*/ true, 0u, (unsigned) mNodes.size(), [&](size_t nodeIndex) {
         generateLine(nodeIndex, scene);
     });
 }
@@ -786,7 +922,7 @@ void PathVisualizer::draw(scene_rdl2::fb_util::RenderBuffer* renderBuffer, const
                       const float alpha,
                       const float width,
                       const bool drawEndpoint,
-                      const unsigned nodeId,
+                      const size_t nodeId,
                       const PosType startPosType,
                       const PosType endPosType) {
         scene_rdl2::math::Color c = getRayColor(static_cast<Flags>(flags));
@@ -833,48 +969,45 @@ PathVisualizer::transformPointWorld2Screen(const Vec3f& p, const pbr::Camera* ca
 
 /// -------- Getters ---------
 
-inline bool PathVisualizer::matchesFlag(const int nodeIndex, const Flags& flag) const 
+inline bool PathVisualizer::matchesLobeType(const int lobeType1, const int lobeType2) const 
 {
-    return mNodes[nodeIndex].mFlags == flag;
+    return static_cast<uint8_t>(lobeType1) & static_cast<uint8_t>(lobeType2);
 }
 
-inline bool PathVisualizer::matchesFlag(const int lobeType, const int flag) const 
+inline bool PathVisualizer::matchesFlags(const Flags flags) const
 {
-    return static_cast<uint8_t>(lobeType) & static_cast<uint8_t>(flag);
+    if (isCameraRay(flags))             { return true; }
+    if (isIndirectDiffuseRay(flags))    { return mParams->mIndirectRaysOn && mParams->mIndirectDiffuseRaysOn; }
+    if (isIndirectSpecularRay(flags))   { return mParams->mIndirectRaysOn && mParams->mIndirectSpecularRaysOn; }
+    if (isDirectDiffuseRay(flags))      { return mParams->mDirectRaysOn && mParams->mDirectDiffuseRaysOn; }
+    if (isDirectSpecularRay(flags))     { return mParams->mDirectRaysOn && mParams->mDirectSpecularRaysOn; }
+    if (isDirectLightRay(flags))        { return mParams->mDirectRaysOn && mParams->mDirectLightRaysOn; }
+    if (isDiffuseSample(flags))         { return mParams->mSamplesOn && mParams->mDiffuseSamplesOn; }
+    if (isSpecularSample(flags))        { return mParams->mSamplesOn && mParams->mSpecularSamplesOn; }
+    if (isLightSample(flags))           { return mParams->mSamplesOn && mParams->mLightSamplesOn; }
 }
 
-inline bool PathVisualizer::matchesFlags(const int lobeType, const bool lightSampleFlag, const int depth) const
+inline bool PathVisualizer::lobeIsDiffuse(const int lobeType) const
 {
-    if (depth == 0) {
-        // there are no filters for camera rays
-        return true;
-    }
-
-    bool matches = true;
-    if (matchesFlag(lobeType, shading::BsdfLobe::GLOSSY) || 
-        matchesFlag(lobeType, shading::BsdfLobe::MIRROR)) {
-        matches = matches && mParams->mSpecularRaysOn;
-    } else if (matchesFlag(lobeType, shading::BsdfLobe::DIFFUSE)) {
-        matches = matches && mParams->mDiffuseRaysOn;
-    } else if (lightSampleFlag) {
-        matches = matches && mParams->mLightSamplesOn && mParams->mOcclusionRaysOn;
-    } else {
-        matches = matches && mParams->mBsdfSamplesOn && mParams->mOcclusionRaysOn;
-    }
-    return matches;
+    return matchesLobeType(lobeType, shading::BsdfLobe::DIFFUSE);
 }
 
-inline int PathVisualizer::getRayDepth(const int nodeIndex) const
+inline bool PathVisualizer::lobeIsSpecular(const int lobeType) const
+{
+    return matchesLobeType(lobeType, shading::BsdfLobe::GLOSSY) || matchesLobeType(lobeType, shading::BsdfLobe::MIRROR);
+}
+
+inline int PathVisualizer::getRayDepth(const size_t nodeIndex) const
 {
     return mNodes[nodeIndex].mDepth;
 }
 
-inline bool PathVisualizer::isCameraRay(const int nodeIndex) const
+inline bool PathVisualizer::isCameraRay(const size_t nodeIndex) const
 {
-    return getRayDepth(nodeIndex) == 0;
+    return matchesOriginType(mNodes[nodeIndex].mFlags, Flags::CAMERA);
 }
 
-inline Vec3f PathVisualizer::getRayOrigin(const int nodeIndex) const
+inline Vec3f PathVisualizer::getRayOrigin(const size_t nodeIndex) const
 {
     const int rayOriginIndex = mNodes[nodeIndex].mRayOriginIndex;
 
@@ -882,7 +1015,7 @@ inline Vec3f PathVisualizer::getRayOrigin(const int nodeIndex) const
     return mVertexBuffer[rayOriginIndex];
 }
 
-inline Vec3f PathVisualizer::getRayEndpoint(const int nodeIndex) const
+inline Vec3f PathVisualizer::getRayEndpoint(const size_t nodeIndex) const
 {
     const int rayEndpointIndex = mNodes[nodeIndex].mRayEndpointIndex;
 
@@ -890,7 +1023,7 @@ inline Vec3f PathVisualizer::getRayEndpoint(const int nodeIndex) const
     return mVertexBuffer[rayEndpointIndex];
 }
 
-inline Vec3f PathVisualizer::getRayIsect(const int nodeIndex) const
+inline Vec3f PathVisualizer::getRayIsect(const size_t nodeIndex) const
 {
     const int rayIsectIndex = mNodes[nodeIndex].mRayIsectIndex;
 
@@ -902,15 +1035,63 @@ inline Vec3f PathVisualizer::getRayIsect(const int nodeIndex) const
 
 inline scene_rdl2::math::Color PathVisualizer::getRayColor(const Flags& flags) const
 {
-    switch(flags) {
-        case Flags::CAMERA:         return mParams->mCameraRayColor;
-        case Flags::INACTIVE:       return scene_rdl2::math::Color(0, 0, 0);
-        case Flags::DIFFUSE:        return mParams->mDiffuseRayColor;
-        case Flags::SPECULAR:       return mParams->mSpecularRayColor;
-        case Flags::LIGHT_SAMPLE:   return mParams->mLightSampleColor;
-        case Flags::BSDF_SAMPLE:    return mParams->mBsdfSampleColor;
-        default:                    return scene_rdl2::math::Color(1, 1, 1);
-    }
+    // Must check if ray is inactive first, as that takes precedence over other flags.
+    if (matchesLineStatus(flags, Flags::INACTIVE))  { return scene_rdl2::math::Color(0, 0, 0); }
+    if (isCameraRay(flags))                         { return mParams->mCameraRayColor; }
+    if (isIndirectDiffuseRay(flags))                { return mParams->mIndirectDiffuseRayColor; }
+    if (isIndirectSpecularRay(flags))               { return mParams->mIndirectSpecularRayColor; }
+    if (isDirectDiffuseRay(flags))                  { return mParams->mDirectDiffuseRayColor; }
+    if (isDirectSpecularRay(flags))                 { return mParams->mDirectSpecularRayColor; }
+    if (isDirectLightRay(flags))                    { return mParams->mDirectLightRayColor; }
+    if (isDiffuseSample(flags))                     { return mParams->mIndirectDiffuseRayColor; }
+    if (isSpecularSample(flags))                    { return mParams->mIndirectSpecularRayColor; }
+    if (isLightSample(flags))                       { return mParams->mDirectLightRayColor; }
+    return scene_rdl2::math::Color(1, 1, 1);
+}
+
+bool PathVisualizer::isCameraRay(const Flags flags)
+{
+    return PathVisualizer::matchesOriginType(flags, Flags::CAMERA);
+}
+bool PathVisualizer::isIndirectSpecularRay(const Flags flags)
+{
+    bool result = PathVisualizer::matchesOriginType(flags, Flags::SPECULAR);
+    return result && PathVisualizer::matchesRayType(flags, Flags::INDIRECT);
+}
+bool PathVisualizer::isIndirectDiffuseRay(const Flags flags)
+{
+    bool result = PathVisualizer::matchesOriginType(flags, Flags::DIFFUSE);
+    return result && PathVisualizer::matchesRayType(flags, Flags::INDIRECT);
+}
+bool PathVisualizer::isDirectSpecularRay(const Flags flags)
+{
+    bool result = PathVisualizer::matchesOriginType(flags, Flags::SPECULAR);
+    return result && PathVisualizer::matchesRayType(flags, Flags::DIRECT);
+}
+bool PathVisualizer::isDirectDiffuseRay(const Flags flags)
+{
+    bool result = PathVisualizer::matchesOriginType(flags, Flags::DIFFUSE);
+    return result && PathVisualizer::matchesRayType(flags, Flags::DIRECT);
+}
+bool PathVisualizer::isDirectLightRay(const Flags flags)
+{
+    bool result = PathVisualizer::matchesOriginType(flags, Flags::LIGHT);
+    return result && PathVisualizer::matchesRayType(flags, Flags::DIRECT);
+}
+bool PathVisualizer::isDiffuseSample(const Flags flags)
+{
+    bool result = PathVisualizer::matchesOriginType(flags, Flags::DIFFUSE);
+    return result && PathVisualizer::matchesRayType(flags, Flags::SAMPLE);
+}
+bool PathVisualizer::isSpecularSample(const Flags flags)
+{
+    bool result = PathVisualizer::matchesOriginType(flags, Flags::SPECULAR);
+    return result && PathVisualizer::matchesRayType(flags, Flags::SAMPLE);
+}
+bool PathVisualizer::isLightSample(const Flags flags)
+{
+    bool result = PathVisualizer::matchesOriginType(flags, Flags::LIGHT);
+    return result && PathVisualizer::matchesRayType(flags, Flags::SAMPLE);
 }
 
 /// -------- Setters --------
@@ -919,31 +1100,6 @@ void PathVisualizer::setState(State state)
 {
     std::lock_guard<std::mutex> lock(mWriteLock);
     mState = state;
-}
-
-inline void PathVisualizer::setFlags(Flags& flags, const bool isDiffuse, const bool isSpecular, 
-                                     const bool isLightSample, const bool isCameraRay) const
-{
-    flags = Flags::NONE;
-    if (isCameraRay) {
-        flags = Flags::CAMERA;
-    }
-    else if (isDiffuse) {
-        mDiffuseRayCount++;
-        flags = Flags::DIFFUSE; 
-    } 
-    else if (isSpecular) {
-        mSpecularRayCount++;
-        flags = Flags::SPECULAR; 
-    }
-    else if (isLightSample) {
-        mLightSampleRayCount++;
-        flags = Flags::LIGHT_SAMPLE;
-    }
-    else { 
-        mBsdfSampleRayCount++;
-        flags = Flags::BSDF_SAMPLE;
-    }
 }
 
 inline int PathVisualizer::addVertex(const Vec3f& v)
@@ -985,7 +1141,6 @@ size_t PathVisualizer::getMemoryFootprint() const
                     sizeof(bool)                        + /* mNeedRenderRefresh */
                     sizeof(int)                         + /* mCameraIsectIndex */
                     sizeof(mcrt_common::Frustum)        + /* mFrustum */
-                    sizeof(float)                       + /* mMaxRayLength */
                     sizeof(std::mutex)                  + /* mWriteLock */
                     sizeof(moonray::util::AverageDouble)+ /* mInRenderingTime */
                     sizeof(moonray::util::AverageDouble)  /* mPostRenderingTime */
@@ -1003,25 +1158,32 @@ void PathVisualizer::printTimeStats() const
     std::cout << "Combined Time: " << (inRenderTime + postRenderTime) << " ms\n";
 }
 
-void PathVisualizer::printNode(const int nodeIndex) const {
-    if (nodeIndex < 0 || nodeIndex >= mNodes.size()) {
-        std::cout << "Node at " << nodeIndex << " doesn't exist\n";
+std::string PathVisualizer::getNodeInfo(const size_t nodeIndex) const {
+    std::string info;
+    if (nodeIndex >= mNodes.size()) {
+        info = "Node at " + std::to_string(nodeIndex) + " doesn't exist\n";
+    } else {
+        std::ostringstream ostr;
+        ostr << "\n";
+        ostr << "ID: " << nodeIndex << ",\n";
+        ostr << "Origin: " << std::setprecision(2) << getRayOrigin(nodeIndex) << ",\n";
+        ostr << "End: " << std::setprecision(2) << getRayEndpoint(nodeIndex) << ",\n";
+        ostr << "Isect: " << std::setprecision(2) << getRayIsect(nodeIndex) << ",\n";
+        ostr << "Depth: " << static_cast<int>(mNodes[nodeIndex].mDepth) << ",\n";
+        ostr << "Flags: " << mNodes[nodeIndex].mFlags << "\n";
+        info = ostr.str();
     }
-
-    std::cout << "Node {\n";
-    std::cout << "  ID: " << nodeIndex << ",\n";
-    std::cout << "  mRayOrigin: " << getRayOrigin(nodeIndex) << ",\n";
-    std::cout << "  mRayEndpoint: " << getRayEndpoint(nodeIndex) << ",\n";
-    std::cout << "  mRayIsect: " << getRayIsect(nodeIndex) << ",\n";
-    std::cout << "  mDepth: " << mNodes[nodeIndex].mDepth << ",\n";
-    std::cout << "  mFlags: " << mNodes[nodeIndex].mFlags << ",\n";
-    std::cout << "}\n";
+    return info;
 }
 
-void PathVisualizer::printNodes(const std::vector<int>& nodeList) const
+void PathVisualizer::printNode(const size_t nodeIndex) const {
+    std::cout << getNodeInfo(nodeIndex);
+}
+
+void PathVisualizer::printNodes(const std::vector<size_t>& nodeList) const
 {
     std::cout << "-------- Printing out nodes ---------\n";
-    for (const int nodeIndex : nodeList) {
+    for (const size_t nodeIndex : nodeList) {
         printNode(nodeIndex);
     }
     std::cout << "\n";
@@ -1197,7 +1359,7 @@ PathVisualizer::showNodeInfo() const
         ostr << std::setw(w) << posId << ':' << showPos(mVertexBuffer[posId]);
         return ostr.str();
     };
-    auto showNode = [&](const int nodeId) {
+    auto showNode = [&](const size_t nodeId) {
         auto showFlag = [&](const Flags& flag) {
             std::ostringstream ostr;
             ostr << "0x" << std::setw(2) << std::hex << static_cast<int>(flag) << ' ' << flag;

@@ -1,4 +1,4 @@
-// Copyright 2023-2025 DreamWorks Animation LLC
+// Copyright 2023-2026 DreamWorks Animation LLC
 // SPDX-License-Identifier: Apache-2.0
 
 //
@@ -88,7 +88,10 @@ areSingleRaysOccluded(pbr::TLState *pbrTls, unsigned numEntries, BundledOcclRay 
         rtRay.tfar = occlRay.mMaxT;
         rtRay.setDepth(occlRay.mDepth);
         if (fs.mSimulationMode) {
-            fs.mScene->recordOcclusionRay(rtRay, occlRay.mPixel, /* isLightSample */ true, isOccluded);
+            // TODO: we currently don't have a way to distinguish between occlusion rays
+            // generated from direct light sampling vs. those generated from bsdf sampling.
+            // For now, we will just record all occlusion rays as direct light rays.
+            fs.mScene->recordDirectLightRay(rtRay, occlRay.mPixel, isOccluded);
         }
 
         if (!isOccluded || disableShadowing) {
@@ -441,8 +444,13 @@ rayBundleHandler(mcrt_common::ThreadLocalState *tls, unsigned numEntries,
             // we can record shading results as well.  This could ultimately replace the existing
             // functionality that the command-line -print_bsdf option provides.
             const Subpixel& sp = rayStates[i]->mSubpixel;
+            // Record ray for the path visualizer
             if (fs.mSimulationMode) {
-                fs.mScene->recordRegularRay(ray, sp.mPixel, pv.lobeType);
+                if (ray.getDepth() == 0) {
+                    fs.mScene->recordCameraRay(ray, sp.mPixel);
+                } else {
+                    fs.mScene->recordIndirectRay(ray, sp.mPixel, pv.lobeType);
+                }
             }
             // --------------------------------------------------------------------------------------
 

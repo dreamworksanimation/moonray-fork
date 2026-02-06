@@ -1,4 +1,4 @@
-// Copyright 2023-2025 DreamWorks Animation LLC
+// Copyright 2023-2026 DreamWorks Animation LLC
 // SPDX-License-Identifier: Apache-2.0
 
 /// @file PathIntegratorMultiSampler.cc
@@ -112,7 +112,7 @@ PathIntegrator::addDirectVisibleBsdfLobeSampleContribution(pbr::TLState *pbrTls,
     /// Record ray for our path visualizer
     if (fs.mSimulationMode) {
         mcrt_common::Ray debugRay(parentRay.getOrigin(), bsmp.wi, 0.f, tfar, 0.f, rayDepth);
-        fs.mScene->recordOcclusionRay(debugRay, sp.mPixel, /* isLightSample */ false, isOccluded);
+        fs.mScene->recordDirectBsdfRay(debugRay, sp.mPixel, lobe.getType(), isOccluded);
     }
 }
 
@@ -149,6 +149,7 @@ PathIntegrator::addDirectVisibleLightSampleContributions(pbr::TLState* pbrTls, S
 {
     const int lightSampleCount = lSampler.getLightSampleCount();
     uint32_t sceneLightIdx = light->getSceneIndex();
+    const FrameState &fs = *pbrTls->mFs;
 
     for (int i = 0; i < lightSampleCount; ++i) {
         // Increment stats for the number of light samples taken for this light
@@ -172,7 +173,6 @@ PathIntegrator::addDirectVisibleLightSampleContributions(pbr::TLState* pbrTls, S
         float presence = 0.0f;
         scene_rdl2::math::Color tr;
 
-        const FrameState &fs = *pbrTls->mFs;
         const bool hasUnoccludedFlag = fs.mAovSchema->hasLpePrefixFlags(AovSchema::sLpePrefixUnoccluded);
         int32_t assignmentId = isect.getLayerAssignmentId();
         bool isOccluded = isRayOccluded(pbrTls, light, shadowRay, rayEpsilon, shadowRayEpsilon, sp, 
@@ -293,7 +293,7 @@ PathIntegrator::addDirectVisibleLightSampleContributions(pbr::TLState* pbrTls, S
         /// Record ray for our path visualizer
         if (fs.mSimulationMode) {
             mcrt_common::Ray debugRay(P, lsmp[i].wi, 0.f, tfar, 0.f, rayDepth);
-            fs.mScene->recordOcclusionRay(debugRay, sp.mPixel, /* isLightSample */ true, isOccluded);
+            fs.mScene->recordDirectLightRay(debugRay, sp.mPixel, isOccluded);
         }
     }
 }

@@ -1,4 +1,4 @@
-// Copyright 2023-2025 DreamWorks Animation LLC
+// Copyright 2023-2026 DreamWorks Animation LLC
 // SPDX-License-Identifier: Apache-2.0
 
 ///
@@ -1028,14 +1028,40 @@ Scene::pickVisibleLights(const mcrt_common::Ray &ray, float maxDistance, std::ve
     }
 }
 
-void Scene::recordOcclusionRay(const mcrt_common::Ray& ray, uint32_t pixel, bool isLightSample, bool isOccluded) const
+void
+Scene::recordCameraRay(const mcrt_common::Ray& ray, const uint32_t pixel) const
 {
-    mPathVisualizer->recordOcclusionRay(ray, *this, pixel, isLightSample, isOccluded);
+    mPathVisualizer->recordCameraRay(ray, *this, pixel);
 }
 
-void Scene::recordRegularRay(const mcrt_common::Ray& ray, uint32_t pixel, int lobeType) const
+void
+Scene::recordIndirectRay(const mcrt_common::Ray& ray, const uint32_t pixel, const int lobeType) const
 {
-    mPathVisualizer->recordRegularRay(ray, *this, pixel, lobeType);
+    mPathVisualizer->recordIndirectRay(ray, *this, pixel, lobeType);
+}
+
+void
+Scene::recordDirectBsdfRay(const mcrt_common::Ray& ray, const uint32_t pixel, 
+                           const int lobeType, const bool occlusionFlag) const
+{
+    mPathVisualizer->recordDirectBsdfRay(ray, *this, pixel, lobeType, occlusionFlag);
+}
+
+void
+Scene::recordDirectLightRay(const mcrt_common::Ray& ray, const uint32_t pixel, const bool occlusionFlag) const
+{
+    mPathVisualizer->recordDirectLightRay(ray, *this, pixel, occlusionFlag);
+}
+void
+Scene::recordBsdfSample(const mcrt_common::Ray& ray, const uint32_t pixel, const int lobeType) const
+{
+    mPathVisualizer->recordBsdfSample(ray, *this, pixel, lobeType);
+}
+
+void
+Scene::recordLightSample(const mcrt_common::Ray& ray, const uint32_t pixel) const
+{
+    mPathVisualizer->recordLightSample(ray, *this, pixel);
 }
 
 std::ostream& Scene::print(std::ostream& cout,
@@ -1065,6 +1091,24 @@ extern "C"
 bool CPP_LightFilterNeedsSamples(const moonray::pbr::Scene *scene)
 {
     return MNRY_VERIFY(scene)->lightFilterNeedsSamples();
+}
+
+void CPP_Scene_recordLightSample(const moonray::pbr::Scene *scene, 
+                                 const moonray::mcrt_common::RayDifferential *rayDiff,
+                                 uint32_t pixel)
+{
+    moonray::mcrt_common::Ray ray(rayDiff->org, rayDiff->dir, rayDiff->tnear, 
+                                  rayDiff->tfar, rayDiff->time, rayDiff->ext.depth);
+    MNRY_VERIFY(scene)->recordLightSample(ray, pixel);
+}
+
+void CPP_Scene_recordBsdfSample(const moonray::pbr::Scene *scene, 
+                                 const moonray::mcrt_common::RayDifferential *rayDiff,
+                                 uint32_t pixel, int lobeType)
+{
+    moonray::mcrt_common::Ray ray(rayDiff->org, rayDiff->dir, rayDiff->tnear, 
+                                  rayDiff->tfar, rayDiff->time, rayDiff->ext.depth);
+    MNRY_VERIFY(scene)->recordBsdfSample(ray, pixel, lobeType);
 }
 
 const moonray::pbr::LightSet * CPP_getVisibleLightSet(const moonray::pbr::Scene *scene)

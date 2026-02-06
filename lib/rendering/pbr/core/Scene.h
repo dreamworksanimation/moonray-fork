@@ -1,4 +1,4 @@
-// Copyright 2023-2025 DreamWorks Animation LLC
+// Copyright 2023-2026 DreamWorks Animation LLC
 // SPDX-License-Identifier: Apache-2.0
 
 ///
@@ -313,10 +313,14 @@ public:
         mPathVisualizer = visualizer;
     }
 
-    // Record an occlusion ray for the path visualizer
-    void recordOcclusionRay(const mcrt_common::Ray& ray, uint32_t pixel, bool isLightSample, bool isOccluded) const;
-    // Record a regular ray for the path visualizer
-    void recordRegularRay(const mcrt_common::Ray& ray, uint32_t pixel, int lobeType) const;
+    // Functions to record different types of rays and samples for path visualization
+    void recordCameraRay(const mcrt_common::Ray& ray, const uint32_t pixel) const;
+    void recordIndirectRay(const mcrt_common::Ray& ray, const uint32_t pixel, const int lobeType) const;
+    void recordDirectBsdfRay(const mcrt_common::Ray& ray, const uint32_t pixel, 
+                             const int lobeType, const bool occlusionFlag) const;
+    void recordDirectLightRay(const mcrt_common::Ray& ray, const uint32_t pixel, const bool occlusionFlag) const;
+    void recordBsdfSample(const mcrt_common::Ray& ray, const uint32_t pixel, const int lobeType) const;
+    void recordLightSample(const mcrt_common::Ray& ray, const uint32_t pixel) const;
 
 private:
     /// Copy is disabled
@@ -435,7 +439,10 @@ private:
     // Whether any light filter needs samples (e.g. for blur)
     bool mLightFilterNeedsSamples;
 
-    pbr::PathVisualizer* mPathVisualizer;
+    // A pointer to the path visualizer to record ray info.
+    // It needs to be mutable because even a const scene 
+    // should be able to record ray info. 
+    mutable pbr::PathVisualizer* mPathVisualizer;
 };
 
 

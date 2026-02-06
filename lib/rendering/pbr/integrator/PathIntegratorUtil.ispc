@@ -1,4 +1,4 @@
-// Copyright 2023-2024 DreamWorks Animation LLC
+// Copyright 2023-2026 DreamWorks Animation LLC
 // SPDX-License-Identifier: Apache-2.0
 
 
@@ -52,6 +52,55 @@ integrateBsdfSample(const varying BsdfSampler &bSampler, uniform int lobeIndex,
 
 struct Scene;
 extern "C" uniform bool CPP_LightFilterNeedsSamples(const uniform Scene *uniform scene);
+extern "C" void CPP_Scene_recordLightSample(const uniform Scene * uniform scene, 
+                                            const uniform RayDifferential * uniform ray, 
+                                            const uniform uint32_t pixel); 
+extern "C" void CPP_Scene_recordBsdfSample(const uniform Scene * uniform scene, 
+                                           const uniform RayDifferential * uniform ray, 
+                                           const uniform uint32_t pixel, const uniform BsdfLobeType lobeType);
+
+inline void
+Scene_recordLightSample(const uniform Scene * uniform scene,
+                        const uniform RayDifferential * uniform ray, 
+                        const uniform uint32_t pixel)
+{
+    CPP_Scene_recordLightSample(scene, ray, pixel);
+}
+
+inline void
+Scene_recordBsdfSample(const uniform Scene * uniform scene,
+                       const uniform RayDifferential * uniform ray, 
+                       const uniform uint32_t pixel, 
+                       const uniform BsdfLobeType lobeType)
+{
+    CPP_Scene_recordBsdfSample(scene, ray, pixel, lobeType);
+}
+
+void
+recordBsdfSamplePathVisualizer(uniform PbrTLState * uniform pbrTls, const varying Vec3f &P, 
+                               const varying BsdfSample &currSamp, const varying PathVertex &pv,
+                               const varying Subpixel &sp, const uniform BsdfLobeType lobeType)
+{
+    // Record sample for path visualization
+    if (pbrTls->mFs->mSimulationMode) {
+        foreach_active(lane) {
+            uniform RayDifferential ray;
+            ray.org = Vec3f_ctor(extract(P.x, lane), extract(P.y, lane), extract(P.z, lane));
+            ray.dir = Vec3f_ctor(extract(currSamp.wi.x, lane), 
+                                 extract(currSamp.wi.y, lane), 
+                                 extract(currSamp.wi.z, lane));
+            ray.tnear = 0.0f;
+            ray.tfar = sMaxValue;
+            ray.time = 0.0f;
+            // TODO: We might want to investigate the desired ray depth behavior with mirror materials. 
+            // If we want to visualize ray depth the same way we do with other non-mirror rays, I believe we will 
+            // need to use regular ray depth, instead of the nonMirrorDepth we use here.
+            ray.ext.depth = extract(pv.nonMirrorDepth, lane) + 1; // +1 to the parent's depth
+            Scene_recordBsdfSample((const uniform Scene *uniform)(pbrTls->mFs->mScene), 
+                                    &ray, extract(sp.mPixel, lane), lobeType);
+        }
+    }
+}
 
 void
 drawBsdfSamples(uniform PbrTLState * uniform pbrTls, uniform ShadingTLState * uniform shadingTls,
@@ -163,6 +212,10 @@ drawBsdfSamples(uniform PbrTLState * uniform pbrTls, uniform ShadingTLState * un
 
             bool isValid = BsdfSampler_sample(pbrTls, &bSampler, lobeIndex,
                     bsdfSample[0], bsdfSample[1], bsmp[s]);
+
+            // We must record this data before checking validity, as we want complete sampling data for visualization
+            recordBsdfSamplePathVisualizer(pbrTls, P, bsmp[s], pv, sp, lobeType);
+
             if (!isValid) {
                 continue;
             }
@@ -380,6 +433,32 @@ void accumVisibilityAovsOccluded(const uniform PbrTLState * uniform pbrTls,
 }
 
 void
+recordLightSamplePathVisualizer(uniform PbrTLState * uniform pbrTls, const varying Vec3f &P, 
+                                const varying LightSample &currSamp, const varying PathVertex &pv,
+                                const varying Subpixel &sp)
+{
+    // Record sample for path visualization
+    if (pbrTls->mFs->mSimulationMode) {
+        foreach_active(lane) {
+            uniform RayDifferential ray;
+            ray.org = Vec3f_ctor(extract(P.x, lane), extract(P.y, lane), extract(P.z, lane));
+            ray.dir = Vec3f_ctor(extract(currSamp.wi.x, lane), 
+                                 extract(currSamp.wi.y, lane), 
+                                 extract(currSamp.wi.z, lane));
+            ray.tnear = 0.0f;
+            ray.tfar = sMaxValue;
+            ray.time = 0.0f;
+            // TODO: We might want to investigate the desired ray depth behavior with mirror materials. 
+            // If we want to visualize ray depth the same way we do with other non-mirror rays, I believe we will 
+            // need to use regular ray depth, instead of the nonMirrorDepth we use here.
+            ray.ext.depth = extract(pv.nonMirrorDepth, lane) + 1; // +1 to parent's depth
+            Scene_recordLightSample((const uniform Scene *uniform)(pbrTls->mFs->mScene), 
+                                    &ray, extract(sp.mPixel, lane));
+        }
+    }
+}
+
+void
 drawLightSamples(uniform PbrTLState * uniform pbrTls, uniform ShadingTLState * uniform shadingTls,
         const varying LightSetSampler &lSampler, const varying BsdfSampler &bSampler,
         const varying Subpixel &sp, const varying PathVertex &pv,
@@ -458,6 +537,10 @@ drawLightSamples(uniform PbrTLState * uniform pbrTls, uniform ShadingTLState * u
 
         LightSetSampler_sampleIntersectAndEval(&lSampler, shadingTls, light, lightFilterList, &pv,
                 P, cullingNormal, lightFilterSample, time, lightSample, currSamp, rayDirFootprint);
+
+        // We must record this data before checking validity, as we want complete sampling data for visualization
+        recordLightSamplePathVisualizer(pbrTls, P, currSamp, pv, sp);
+
         if (LightSample_isInvalid(&(currSamp))) {
             // These samples occur on the shadow terminator -- they are invalid because they face
             // away from the point (dot(n, wi) < epsilon). They should count as "misses" in the visibility aov.

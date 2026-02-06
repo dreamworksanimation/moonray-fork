@@ -1,4 +1,4 @@
-// Copyright 2023-2025 DreamWorks Animation LLC
+// Copyright 2023-2026 DreamWorks Animation LLC
 // SPDX-License-Identifier: Apache-2.0
 
 ///
@@ -453,11 +453,16 @@ PathIntegrator::computeRadianceRecurse(pbr::TLState *pbrTls, mcrt_common::RayDif
         }
     }
 
-    /// ---- Record ray for our path visualizer -------------------------------------------------
-    if (hitGeom && fs.mSimulationMode) {
-        scene->recordRegularRay(ray, sp.mPixel, lobeType);
+    // Record ray for the path visualizer
+    if (fs.mSimulationMode) {
+        if (ray.getDepth() == 0) {
+            fs.mScene->recordCameraRay(ray, sp.mPixel);
+        } else {
+            if (hitGeom) {
+                fs.mScene->recordIndirectRay(ray, sp.mPixel, lobeType);
+            }
+        }
     }
-    /// -----------------------------------------------------------------------------------------
 
     // Prevent aliasing in the visibility aov by accounting for 
     // primary rays that don't hit anything

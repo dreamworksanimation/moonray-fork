@@ -1,4 +1,4 @@
-// Copyright 2025 DreamWorks Animation LLC
+// Copyright 2025-2026 DreamWorks Animation LLC
 // SPDX-License-Identifier: Apache-2.0
 
 #pragma once
@@ -30,24 +30,32 @@ public:
 
     void setOn(const bool flag) { mOn = flag; }
 
-    uint32_t mPixelX         = 0;       // x-coord for user-chosen pixel
-    uint32_t mPixelY         = 0;       // y-coord for user-chosen pixel
-    uint32_t mMaxDepth       = 1;       // max number of bounces
-    uint32_t mPixelSamples   = 4;       // # of pixel samples
-    uint32_t mLightSamples   = 1;       // # of light samples
-    uint32_t mBsdfSamples    = 1;       // # of bsdf samples
-    bool mUseSceneSamples   = false;    // whether to use the sampling settings from the rdla or user-specified settings
-    bool mOcclusionRaysOn   = true;     // whether to display occlusion rays (bsdf + light)
-    bool mSpecularRaysOn    = true;     // whether to display specular rays
-    bool mDiffuseRaysOn     = true;     // whether to display diffuse rays
-    bool mBsdfSamplesOn     = true;     // whether to display occlusion rays sampled from the bsdf
-    bool mLightSamplesOn    = true;     // whether to display occlusion rays sampled from the light
-    scene_rdl2::math::Color mCameraRayColor     = scene_rdl2::math::Color(0, 0, 1);     // color of the camera rays
-    scene_rdl2::math::Color mSpecularRayColor   = scene_rdl2::math::Color(0, 1, 1);     // color of the specular rays
-    scene_rdl2::math::Color mDiffuseRayColor    = scene_rdl2::math::Color(1, 0, 1);     // color of the diffuse rays
-    scene_rdl2::math::Color mBsdfSampleColor    = scene_rdl2::math::Color(1, 0.4, 0);   // color of the bsdf rays
-    scene_rdl2::math::Color mLightSampleColor   = scene_rdl2::math::Color(1, 1, 0);     // color of the light rays
-    float mLineWidth = 1.0f;               // width of the lines drawn
+    uint32_t mPixelX                = 0;       // x-coord for user-chosen pixel
+    uint32_t mPixelY                = 0;       // y-coord for user-chosen pixel
+    uint32_t mMaxDepth              = 1;       // max number of bounces
+    uint32_t mPixelSamples          = 4;       // # of pixel samples
+    uint32_t mLightSamples          = 1;       // # of light samples
+    uint32_t mBsdfSamples           = 1;       // # of bsdf samples
+    bool mUseSceneSamples           = false;   // whether to use the sampling settings from the rdla or user-specified settings
+    bool mDirectRaysOn              = true;    // whether to display direct occlusion rays (bsdf + light)
+    bool mIndirectRaysOn            = true;    // whether to display the indirect, continuing rays
+    bool mSamplesOn                 = false;   // whether to display the diffuse + specular + light samples
+    bool mIndirectSpecularRaysOn    = true;    // whether to display specular rays
+    bool mIndirectDiffuseRaysOn     = true;    // whether to display diffuse rays
+    bool mDirectSpecularRaysOn      = true;    // whether to display occlusion rays sampled from a specular bsdf
+    bool mDirectDiffuseRaysOn       = true;    // whether to display occlusion rays sampled from a diffuse bsdf
+    bool mDirectLightRaysOn         = true;    // whether to display occlusion rays sampled from the light
+    bool mDiffuseSamplesOn          = true;    // whether to display the directions of all the diffuse samples
+    bool mSpecularSamplesOn         = true;    // whether to display the directions of all the specular samples
+    bool mLightSamplesOn            = true;    // whether to display the directions of all the light samples
+    scene_rdl2::math::Color mCameraRayColor             = scene_rdl2::math::Color(0, 0, 1);
+    scene_rdl2::math::Color mIndirectSpecularRayColor   = scene_rdl2::math::Color(0, 0.74, 1);
+    scene_rdl2::math::Color mIndirectDiffuseRayColor    = scene_rdl2::math::Color(1, 0, 1);
+    scene_rdl2::math::Color mDirectSpecularRayColor     = scene_rdl2::math::Color(0.11, 1, 0.27);
+    scene_rdl2::math::Color mDirectDiffuseRayColor      = scene_rdl2::math::Color(0.83, 0.64, 0.83);
+    scene_rdl2::math::Color mDirectLightRayColor        = scene_rdl2::math::Color(1, 1, 0);
+    float mLineWidth = 1.0f;             // width of the lines drawn
+    float mMaxRayLength = 1000.f;        // ray length is capped at this value
     float mHiddenLineOpacity = 0.2f;     // opacity of the line segments that are behind a scene object
 
     void setPixelRange(const int xMin, const int yMin, const int xMax, const int yMax)
@@ -132,15 +140,80 @@ public:
     /// -------------------------------------------------------------------------------------------
 
     /// Type flags for a Node
-    enum class Flags : uint8_t {
-        NONE,               // no flags
-        CAMERA,             // camera ray
-        INACTIVE,           // the part of a ray that has become inactive (ex: after a light ray hits an occluder)
-        DIFFUSE,            // diffuse ray
-        SPECULAR,           // specular ray
-        BSDF_SAMPLE,        // ray produced from sampling a bsdf
-        LIGHT_SAMPLE        // ray produced from sampling a light
+    /// All rays (except camera rays) will have an origin type and a ray type
+    ///
+    /// A "direct" ray is an occlusion ray, which can either be produced from a light sample
+    /// or a bsdf sample. The ray is only added if it has a chance of hitting the light, even if it is
+    /// occluded. If it is occluded, that is taken into account when we draw the rays.
+    ///
+    /// An "indirect" ray is a continuing ray that is produced from a bsdf lobe, so it will either be 
+    /// DIFFUSE or SPECULAR. 
+    /// 
+    /// A "sample" is any sample that is taken that has not yet been evaluated (i.e. it hasn't been used to 
+    /// generate a ray, and hasn't been checked for validity). These "samples" are visualized as rays, but with a set
+    /// length. This allows us to evaluate our sampling code.
+    enum Flags : uint8_t {
+        /* Origin/Lobe Type */
+        CAMERA          = 1 << 0, // camera ray
+        DIFFUSE         = 1 << 1, // diffuse ray
+        SPECULAR        = 1 << 2, // specular ray
+        LIGHT           = 1 << 3, // light ray/sample
+
+        /* Ray Type */
+        DIRECT          = 1 << 4, // direct lighting ray (occlusion ray)
+        INDIRECT        = 1 << 5, // indirect ray (continuing ray)
+        SAMPLE          = 1 << 6, // sample (does not have an endpoint)
+
+        /* Line Status */
+        INACTIVE        = 1 << 7, // the part of a ray that has become inactive (ex: after a light ray hits an occluder)
     };
+
+    // 7 6 5 4 3 2 1 0
+    // ||<-+->|<--+-->|
+    // |   |      |
+    // |   |      +------ OriginType (OriginTypeMask)
+    // |   +------------- RayType (RayTypeMask)
+    // +----------------- LineStatus
+
+    static constexpr unsigned OriginTypeMask = 0x0f;
+    static constexpr unsigned RayTypeMask = 0x70;
+    static constexpr unsigned LineStatusBit = 0x80;
+
+    static void setOriginType(Flags& flags, const Flags originType)
+    {
+        uint8_t flags8 = static_cast<uint8_t>(flags) & ~OriginTypeMask;
+        flags = static_cast<Flags>((flags8) | static_cast<uint8_t>(originType));
+    }
+
+    static void setRayType(Flags& flags, const Flags rayType)
+    {
+        uint8_t flags8 = static_cast<uint8_t>(flags) & ~RayTypeMask;
+        flags = static_cast<Flags>((flags8) | static_cast<uint8_t>(rayType));
+    }
+
+    static void setLineStatus(Flags& flags, const Flags lineStatus)
+    {
+        uint8_t flags8 = static_cast<uint8_t>(flags) & ~LineStatusBit;
+        flags = static_cast<Flags>((flags8) | static_cast<uint8_t>(lineStatus));
+    }
+
+    static bool matchesOriginType(const Flags flags, const Flags originType)
+    {
+        uint8_t flags8 = static_cast<uint8_t>(flags) & OriginTypeMask;
+        return flags8 & static_cast<uint8_t>(originType);
+    }
+
+    static bool matchesRayType(const Flags flags, const Flags rayType)
+    {
+        uint8_t flags8 = static_cast<uint8_t>(flags) & RayTypeMask;
+        return flags8 & static_cast<uint8_t>(rayType);
+    }
+
+    static bool matchesLineStatus(const Flags flags, const Flags lineStatus)
+    {
+        uint8_t flags8 = static_cast<uint8_t>(flags) & LineStatusBit;
+        return flags8 & static_cast<uint8_t>(lineStatus);
+    }
 
     /// -------------------------------------------------------------------------------------------
 
@@ -182,13 +255,13 @@ public:
     using PosType = scene_rdl2::grid_util::VectorPacketLineStatus::PosType;
 
     struct LineSegment {
-        PixelCoordU mPx1;      // starting pixel
-        PixelCoordU mPx2;      // ending pixel
-        Flags mFlags;          // type of line to draw
-        bool mDrawEndpoint;    // whether the line should have an endpoint
-        float mAlpha;          // transparency of line
+        size_t mNodeIndex {0};      // index of the node this line segment belongs to
+        PixelCoordU mPx1;           // starting pixel
+        PixelCoordU mPx2;           // ending pixel
+        Flags mFlags;               // type of line to draw
+        bool mDrawEndpoint;         // whether the line should have an endpoint
+        float mAlpha;               // transparency of line
 
-        unsigned mNodeIndex {0};
         PosType mStartPosType {PosType::UNKNOWN};
         PosType mEndPosType {PosType::UNKNOWN};
     };
@@ -209,15 +282,22 @@ public:
 
     /// Initializes the visualizer
     void initialize(const unsigned int width, const unsigned int height, 
-                    const PathVisualizerParams* params, const float sceneSize);
+                    const PathVisualizerParams* params);
 
-    /// Calls recordRay() to record an occlusion ray
-    void recordOcclusionRay(const mcrt_common::Ray& ray, const Scene& scene, 
-                            const uint32_t pixel, const bool lightSampleFlag, const bool occlusionFlag);
-
-    /// Calls recordRay() to record a regular ray
-    void recordRegularRay(const mcrt_common::Ray& ray, const Scene& scene, 
-                          const uint32_t pixel, const int lobeType);
+    // Calls recordRay() to record a camera ray
+    void recordCameraRay(const mcrt_common::Ray& ray, const Scene& scene, const uint32_t pixel);
+    // Calls recordRay() to record an indirect diffuse/specular ray
+    void recordIndirectRay(const mcrt_common::Ray& ray, const Scene& scene, const uint32_t pixel, const int lobeType);
+    // Calls recordRay() to record a direct diffuse/specular occlusion ray
+    void recordDirectBsdfRay(const mcrt_common::Ray& ray, const Scene& scene, const uint32_t pixel, 
+                             const int lobeType, const bool occludedFlag);
+    // Calls recordRay() to record a direct light occlusion ray
+    void recordDirectLightRay(const mcrt_common::Ray& ray, const Scene& scene, 
+                              const uint32_t pixel, const bool occludedFlag);
+    // Calls recordRay() to record a diffuse/specular sample
+    void recordBsdfSample(const mcrt_common::Ray& ray, const Scene& scene, const uint32_t pixel, const int lobeType);
+    // Calls recordRay() to record a light sample
+    void recordLightSample(const mcrt_common::Ray& ray, const Scene& scene, const uint32_t pixel);
 
     /// Create LineSegments that we can use to draw.
     /// This function should be called once after gathering ray data, and
@@ -261,6 +341,9 @@ public:
     /// Returns the amount of memory used, in bytes
     size_t getMemoryFootprint() const;
 
+    // Returns the number of nodes
+    size_t getNodeCount() const { return mNodes.size(); }
+
     /// Gets/sets the current state of the visualizer
     const State& getState() const { return mState; }
     void setState(State state);
@@ -286,6 +369,12 @@ public:
     // If maxEntries == -1, print all nodes
     void printNodes(const int maxEntries) const;
 
+    /// Given a Node index, print the node
+    void printNode(const size_t nodeIndex) const;
+
+    /// Given a Node index, return the node information as a string
+    std::string getNodeInfo(const size_t nodeIndex) const;
+
     bool getCamPos(scene_rdl2::math::Vec3f& camPos) const;
 
     // Returns all the camera ray intersection points with the surface.
@@ -296,16 +385,26 @@ public:
     /// debug console command parser
     Parser& getParser() { return mParser; }
 
+    static bool isCameraRay(const Flags flags);
+    static bool isIndirectSpecularRay(const Flags flags);
+    static bool isIndirectDiffuseRay(const Flags flags);
+    static bool isDirectSpecularRay(const Flags flags);
+    static bool isDirectDiffuseRay(const Flags flags);
+    static bool isDirectLightRay(const Flags flags);
+    static bool isDiffuseSample(const Flags flags);
+    static bool isSpecularSample(const Flags flags);
+    static bool isLightSample(const Flags flags);
+
 private:
     /// Sets up the viewing frustum, mFrustum, for the given camera
-    bool setUpFrustum(const Camera& cam);    
+    bool setUpFrustum(const Camera& cam);
 
     /// Creates a new Node to store all of the given ray information
     void recordRay(const mcrt_common::Ray& ray, const Scene& scene, const uint32_t pixel,
-                   const int lobeType, const bool lightSampleFlag, const bool occlusionFlag);
+                   Flags flags, const bool occlusionFlag);
 
     /// Given some ray data, check whether that ray matches the user parameters
-    bool matchesParams(const int lobeType, const bool lightSampleFlag, const int depth) const;
+    bool matchesParams(const Flags flags, const int depth) const;
 
     /// Check if the current pixel is occluded by scene geometry
     bool pixelIsOccluded(const PixelCoordU& p, const PixelCoordI& p1, 
@@ -315,14 +414,14 @@ private:
     /// Find the ray origin, endpoint, and intersection, if it's an occlusion ray. Then,
     /// clip those points using the viewing frustum. Returns the number of elements 
     /// in outPoints (can be 2-3)
-    uint8_t clipPoints(const int nodeIndex, scene_rdl2::math::Vec3f* outPoints, bool* clipStatus) const;
+    uint8_t clipPoints(const size_t nodeIndex, scene_rdl2::math::Vec3f* outPoints, bool* clipStatus) const;
 
     using OcclusionFunction = std::function<bool(const PixelCoordU& p)>;
 
     /// A line-drawing algorithm that creates line segments
     /// Some lines will be split into multiple segments if they 
     /// have portions that are occluded
-    void traceLine(const unsigned nodeIndex,
+    void traceLine(const size_t nodeIndex,
                    const PosType startPosType,
                    const PosType endPosType,
                    const PixelCoordI& start, const PixelCoordI& end,                    
@@ -331,10 +430,10 @@ private:
 
     /// Given a node, this function transforms the ray endpoints and 
     /// creates 2D line segment(s), which can then be drawn in the draw() function.
-    void generateLine(const int nodeIndex, const Scene* scene);
+    void generateLine(const size_t nodeIndex, const Scene* scene);
 
     /// Adds a new 2D line segment
-    void addLineSegment(const unsigned nodeIndex,
+    void addLineSegment(const size_t nodeIndex,
                         const PosType startPosType,
                         const PosType endPosType,
                         const PixelCoordU& start, const PixelCoordU& end, const Flags& flags, 
@@ -350,30 +449,30 @@ private:
 
     /// ---- Getters ----
 
-    /// Tells us whether the node at nodeIndex matches the given flag
-    inline bool matchesFlag(const int nodeIndex, const Flags& flag) const;
-
-    /// Tells us whether the given lobeType matches the given flag
-    inline bool matchesFlag(const int lobeType, const int flag) const;
+    /// Tells us whether the lobeTypes match
+    inline bool matchesLobeType(const int lobeType1, const int lobeType2) const;
 
     /// Tells us whether the node at nodeIndex matches the current user-specified flags in mParams
-    inline bool matchesFlags(const int lobeType, const bool lightSampleFlag, const int depth) const;
+    inline bool matchesFlags(const Flags flags) const;
+
+    inline bool lobeIsDiffuse(const int lobeType) const;
+    inline bool lobeIsSpecular(const int lobeType) const;
 
     /// Gets the depth of the ray
-    inline int getRayDepth(const int nodeIndex) const;
+    inline int getRayDepth(const size_t nodeIndex) const;
 
     /// Does ray depth == 0?
-    inline bool isCameraRay(const int nodeIndex) const;
+    inline bool isCameraRay(const size_t nodeIndex) const;
 
     /// Gets the ray origin for the given node
-    inline scene_rdl2::math::Vec3f getRayOrigin(const int nodeIndex) const;
+    inline scene_rdl2::math::Vec3f getRayOrigin(const size_t nodeIndex) const;
 
     /// Gets the ray endpoint for the given node
-    inline scene_rdl2::math::Vec3f getRayEndpoint(const int nodeIndex) const;
+    inline scene_rdl2::math::Vec3f getRayEndpoint(const size_t nodeIndex) const;
 
     /// Gets the ray isect for the given node
     /// Returns a zero vector if there is no isect for the node
-    inline scene_rdl2::math::Vec3f getRayIsect(const int nodeIndex) const;
+    inline scene_rdl2::math::Vec3f getRayIsect(const size_t nodeIndex) const;
 
     /// Given the node index, returns a color based on ray type
     inline scene_rdl2::math::Color getRayColor(const Flags& flags) const;
@@ -396,10 +495,6 @@ private:
     /// Resets the camera ray intersection index
     inline void resetCameraIsectIndex() { mCameraIsectIndex = -1; }
 
-    /// Given the writable "flags", set the appropriate flags based on the boolean vars
-    inline void setFlags(Flags& flags, const bool isDiffuse, const bool isSpecular, 
-                         const bool isLightSample, const bool isCameraRay) const;
-
     /// Add the vertex to the vertex list and return its index
     inline int addVertex(const scene_rdl2::math::Vec3f& v);
 
@@ -409,11 +504,8 @@ private:
 
     /// -----------------
 
-    /// Given a Node index, print the node
-    void printNode(const int nodeIndex) const;
-
     // Given a list of Node indices, print them
-    void printNodes(const std::vector<int>& filteredList) const;
+    void printNodes(const std::vector<size_t>& filteredList) const;
 
     // Node type specified version
     template <typename F>
@@ -475,9 +567,6 @@ private:
 
     /// The camera's viewing frustum
     std::unique_ptr<mcrt_common::Frustum> mFrustum;
-
-    /// Maximum possible ray length
-    float mMaxRayLength;
 
     /// Mutex to avoid simultaneous writes by different threads
     mutable std::mutex mWriteLock;
