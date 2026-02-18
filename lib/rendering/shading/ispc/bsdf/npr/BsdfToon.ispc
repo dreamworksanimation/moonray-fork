@@ -50,6 +50,10 @@ ToonBsdfLobe_eval(const varying BsdfLobe * uniform lobe,
     // Soften hard shadow terminator due to shading normals
     const float Gs = BsdfSlice_computeShadowTerminatorFix(&slice, N, wi);
 
+    // We use the upper bound of 1/2pi as the normalization factor
+    // for the maximum possible toon step function
+    // TODO: a more accurate normalization factor for the varying
+    // step can be computed if so desired.
     return Gs * albedo *
             BsdfLobe_computeScaleAndFresnel(lobe, cosThetaWo) * sOneOverTwoPi;
 }
@@ -65,6 +69,41 @@ ToonBsdfLobe_sample(const varying BsdfLobe * uniform lobe,
 
     wi = localToGlobal(toon->mFrame, sampleLocalHemisphereCosine(r1, r2));
     return ToonBsdfLobe_eval(lobe, slice, wi, &pdf);
+}
+
+void
+ToonBsdfLobe_show(const varying BsdfLobe * const uniform lobe,
+                  const uniform uint8_t ntab)
+{
+    const varying ToonBsdfLobe * uniform me =
+        (const varying ToonBsdfLobe * uniform) lobe;
+
+    const varying Vec3f N = getN(me->mFrame);
+    const varying Fresnel * const uniform fresnel = me->mFresnel;
+
+    BsdfUtil_indent(ntab);   print("[ToonBsdfLobe] mask: %\n", lobe->mMask);
+
+    BsdfUtil_indent(ntab+1); print("scale: % % %\n", BSDF_UTIL_EXTRACT(me->mScale.r),
+                                                     BSDF_UTIL_EXTRACT(me->mScale.g),
+                                                     BSDF_UTIL_EXTRACT(me->mScale.b));
+    BsdfUtil_indent(ntab+1); print("N: % % %\n", BSDF_UTIL_EXTRACT(N.x),
+                                                 BSDF_UTIL_EXTRACT(N.y),
+                                                 BSDF_UTIL_EXTRACT(N.z));
+    BsdfUtil_indent(ntab+1); print("albedo: % % %\n", BSDF_UTIL_EXTRACT(me->mAlbedo.r),
+                                                      BSDF_UTIL_EXTRACT(me->mAlbedo.g),
+                                                      BSDF_UTIL_EXTRACT(me->mAlbedo.b));
+    BsdfUtil_indent(ntab+1); print("extend ramp: ");
+    if (me->mExtendRamp) {
+        print("true\n");
+    } else {
+        print("false\n");
+    }
+
+    BsdfUtil_indent(ntab+1);   print("ramp input scale: %\n", BSDF_UTIL_EXTRACT(me->mRampInputScale));
+
+    if (fresnel) {
+        Fresnel_show(fresnel, ntab+1);
+    }
 }
 
 #pragma ignore warning(all)
@@ -120,12 +159,12 @@ HairToonSpecularBsdfLobe_albedo(const varying BsdfLobe * uniform lobe,
 
 void
 HairToonSpecularBsdfLobe_differentials(const varying BsdfLobe * uniform lobe,
-                                   const varying Vec3f &wo,
-                                   const varying Vec3f &wi,
-                                   varying float r1, varying float r2,
-                                   const varying Vec3f &dNdx,
-                                   const varying Vec3f &dNdy,
-                                   varying Vec3f &dDdx, varying Vec3f &dDdy)
+                                       const varying Vec3f &wo,
+                                       const varying Vec3f &wi,
+                                       varying float r1, varying float r2,
+                                       const varying Vec3f &dNdx,
+                                       const varying Vec3f &dNdy,
+                                       varying Vec3f &dDdx, varying Vec3f &dDdy)
 {
     // This function is only called if indirect reflections are enabled.
     // If that's the case we call the internal hair lobe's differentials
@@ -140,8 +179,8 @@ HairToonSpecularBsdfLobe_differentials(const varying BsdfLobe * uniform lobe,
 
 uniform bool
 HairToonSpecularBsdfLobe_getProperty(const varying BsdfLobe * uniform lobe,
-                                 uniform BsdfLobeProperty property,
-                                 varying float * uniform dest)
+                                     uniform BsdfLobeProperty property,
+                                     varying float * uniform dest)
 {
     const varying HairToonSpecularBsdfLobe * uniform ct =
         (const varying HairToonSpecularBsdfLobe * uniform) lobe;
@@ -160,7 +199,7 @@ HairToonSpecularBsdfLobe_getProperty(const varying BsdfLobe * uniform lobe,
 
 void
 HairToonSpecularBsdfLobe_show(const varying BsdfLobe * const uniform lobe,
-                          const uniform uint8_t ntab)
+                              const uniform uint8_t ntab)
 {
     const varying HairToonSpecularBsdfLobe * uniform me =
         (const varying HairToonSpecularBsdfLobe * uniform) lobe;

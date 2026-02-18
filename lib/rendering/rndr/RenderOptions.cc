@@ -426,7 +426,6 @@ RenderOptions::parseFromCommandLine(int argc, char* argv[])
         while (foundAtIndex >= 0) {
             setPrintBsdf(true);
             // Set some other overrides to make the print_bsdf mode useful.
-            addOverride(overrides, "__SceneVariables__", "print_bsdf", "true", "", true);
             addOverride(overrides, "__SceneVariables__", "debug pixel", values[0] + ", " + values[1], "", true);
             addOverride(overrides, "__SceneVariables__", "max_depth", "0", "", true);
             addOverride(overrides, "__SceneVariables__", "pixel_samples", "1", "", true);
