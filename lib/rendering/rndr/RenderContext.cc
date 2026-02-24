@@ -679,6 +679,11 @@ RenderContext::bakeGeometry(std::vector<std::unique_ptr<geom::BakedMesh>>& baked
 bool
 RenderContext::checkGeometryChangesRequireReload()
 {
+    // Safety checks
+    if (!mSceneContext || !mLayer) {
+        return false;
+    }
+
     // Apply updates to populate geometry change tracking
     mSceneContext->applyUpdates(mLayer);
 
