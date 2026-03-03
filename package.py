@@ -35,7 +35,8 @@ variants = [
         'refplat-vfx2023.1',
         'openimageio-2.4.8.0.x',
         'gcc-11.x',
-        'openvdb-11',
+        # 'openvdb-11',
+        'openvdb-11.0.0.2', # temp fix to work around a package issue with openvdb-11.0.0.3
         'zlib-1.2.11.x'
     ],
     [   # variant 1
@@ -44,7 +45,8 @@ variants = [
         'refplat-vfx2023.1',
         'openimageio-2.4.8.0.x',
         'gcc-11.x',
-        'openvdb-11',
+        # 'openvdb-11',
+        'openvdb-11.0.0.2', # temp fix to work around a package issue with openvdb-11.0.0.3
         'zlib-1.2.11.x'
     ],
     [   # variant 2
@@ -62,7 +64,8 @@ variants = [
         'refplat-vfx2024.0',
         'openimageio-2.4.8.0.x',
         'gcc-11.x',
-        'openvdb-11',
+        # 'openvdb-11',
+        'openvdb-11.0.0.2', # temp fix to work around a package issue with openvdb-11.0.0.3
         'zlib-1.2.11.x'
     ],
     [   # variant 4
@@ -71,7 +74,8 @@ variants = [
         'refplat-vfx2025.0',
         'openimageio-3.0',
         'gcc-11.x',
-        'openvdb-12',
+        # 'openvdb-12',
+        'openvdb-12.1.1.9', # temp fix to work around a package issue with openvdb-12.1.1.1
         'zlib-1.2.11.x'
     ],
     [   # variant 5
@@ -80,7 +84,8 @@ variants = [
         'refplat-houdini21.0',
         'openimageio-3.0',
         'gcc-11.x',
-        'openvdb-12',
+        # 'openvdb-12',
+        'openvdb-12.1.1.9', # temp fix to work around a package issue with openvdb-12.1.1.1
         'zlib-1.2.11.x'
     ],
     [   # variant 6
