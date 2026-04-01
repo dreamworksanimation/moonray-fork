@@ -276,6 +276,13 @@ bool chooseThisLight(uniform PbrTLState * uniform pbrTls,
                      varying int depth,
                      varying int numHits);
 
+bool 
+isLightActive(const uniform Light * uniform light,
+              varying int visibilityMask,
+              varying bool includeRayTerminationLights,
+              varying intptr_t bsdfLobeLightSet,
+              const varying Rdl2LightSetList * uniform parentLobeLightSets);
+
 //----------------------------------------------------------------------------
 
 

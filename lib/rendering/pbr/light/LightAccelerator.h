@@ -32,7 +32,8 @@ public:
     void init(const Light*const* lights, int lightCount, const RTCDevice& rtcDevice, float samplingThreshold);
     int intersect(const scene_rdl2::math::Vec3f &P, const scene_rdl2::math::Vec3f* N, const scene_rdl2::math::Vec3f &wi, float time,
         float maxDistance, bool includeRayTerminationLights, int visibilityMask, IntegratorSample1D &samples,
-        int depth, LightIntersection &isect, int &numHits, const int* lightIdMap) const;
+        int depth, LightIntersection &isect, int &numHits, const int* lightIdMap,
+        const scene_rdl2::rdl2::LightSet* bsdfLobeLightSet, const Rdl2LightSetList& parentLobeLightSets) const;
     finline const Light* getLight(int l) const { return mLights[l]; }
     finline int getLightCount() const { return mLightCount; }
     finline bool useAcceleration() const { return mBoundedLightCount >= SCALAR_THRESHOLD_COUNT; }
@@ -44,10 +45,12 @@ private:
 
     int intersectBounded(const scene_rdl2::math::Vec3f &P, const scene_rdl2::math::Vec3f* N, const scene_rdl2::math::Vec3f &wi,
         float time, float maxDistance, bool includeRayTerminationLights, int visibilityMask,
-        IntegratorSample1D &samples, int depth, LightIntersection &isect, int &numHits, const int* lightIdMap) const;
+        IntegratorSample1D &samples, int depth, LightIntersection &isect, int &numHits, const int* lightIdMap,
+        const scene_rdl2::rdl2::LightSet* bsdfLobeLightSet, const Rdl2LightSetList* parentLobeLightSets) const;
     int intersectUnbounded(const scene_rdl2::math::Vec3f &P, const scene_rdl2::math::Vec3f &wi, float time,
         float maxDistance, bool includeRayTerminationLights, int visibilityMask, IntegratorSample1D &samples,
-        int depth, LightIntersection &isect, int &numHits, const int* lightIdMap) const;
+        int depth, LightIntersection &isect, int &numHits, const int* lightIdMap,
+        const scene_rdl2::rdl2::LightSet* bsdfLobeLightSet, const Rdl2LightSetList& parentLobeLightSets) const;
 };
 
 

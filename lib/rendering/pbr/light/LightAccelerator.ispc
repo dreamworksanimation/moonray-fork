@@ -4,6 +4,7 @@
 
 #include "LightAccelerator.isph"
 #include <moonray/rendering/pbr/core/PbrTLState.isph>
+#include <moonray/rendering/pbr/core/RayState.isph>
 
 export uniform uint32_t
 LightAccelerator_hudValidation(uniform bool verbose)
@@ -33,7 +34,9 @@ LightAccelerator_intersect(uniform PbrTLState * uniform pbrTls,
                            varying int depth,
                            varying LightIntersection &isect, 
                            varying int &numHits,
-                           const uniform int * uniform lightIdMap)
+                           const uniform int * uniform lightIdMap,
+                           varying intptr_t bsdfLobeLightSet,
+                           const varying Rdl2LightSetList * uniform parentLobeLightSets)
 {
     MNRY_ASSERT(acc->mBoundedLightCount >= VECTOR_THRESHOLD_COUNT);
     MNRY_ASSERT(acc->mRtcScene != nullptr);
@@ -51,7 +54,9 @@ LightAccelerator_intersect(uniform PbrTLState * uniform pbrTls,
                                                                     depth,
                                                                     boundedIsect,
                                                                     numHits,
-                                                                    lightIdMap);
+                                                                    lightIdMap,
+                                                                    bsdfLobeLightSet,
+                                                                    parentLobeLightSets);
 
     LightIntersection unboundedIsect;
     varying int unboundedLightIdx = LightAccelerator_intersectUnbounded(pbrTls,
@@ -64,7 +69,9 @@ LightAccelerator_intersect(uniform PbrTLState * uniform pbrTls,
                                                                         depth,
                                                                         unboundedIsect,
                                                                         numHits,
-                                                                        lightIdMap);
+                                                                        lightIdMap,
+                                                                        bsdfLobeLightSet,
+                                                                        parentLobeLightSets);
 
     if (unboundedLightIdx >= 0) {
         isect = unboundedIsect;
@@ -94,7 +101,9 @@ LightAccelerator_intersectBounded(const uniform LightAccelerator * uniform acc,
                                   varying int depth,
                                   varying LightIntersection &isect, 
                                   varying int &numHits,
-                                  const uniform int * uniform lightIdMap)
+                                  const uniform int * uniform lightIdMap,
+                                  varying intptr_t bsdfLobeLightSet,
+                                  const varying Rdl2LightSetList * uniform parentLobeLightSets)
 {
     RTCRayHit rayHit;
     rayHit.ray.org_x = P.x;
@@ -112,6 +121,29 @@ LightAccelerator_intersectBounded(const uniform LightAccelerator * uniform acc,
     rayHit.hit.instID[0] = RTC_INVALID_GEOMETRY_ID;
 
     varying int iIncludeRayTerminationLights = includeRayTerminationLights;
+
+    // ----------------------------------------------
+    // Extract the parentLobeLightSets list for each lane into uniform arrays so we can 
+    // pass it to the CPP intersection function. We must approach it this way, instead of 
+    // passing it directly as varying like the other parameters, because the Rdl2LightSetList
+    // is split into lo and hi parts. Due to SoA structure, the lo and hi parts will not be 
+    // adjacent in memory for each lane, so the CPP function would not be able to reconstruct
+    // the correct Rdl2LightSetList for each lane without us doing this manual extraction and repacking.
+
+    uniform Rdl2LightSetList parentLobeLightSetsBuf[programCount];
+    // Initialize all lanes to 0 in case some are inactive
+    memset(parentLobeLightSetsBuf, 0, sizeof(parentLobeLightSetsBuf));
+    if (parentLobeLightSets != nullptr) {
+        foreach_active (lane) {
+            parentLobeLightSetsBuf[lane].mNumLightSets = extract(parentLobeLightSets->mNumLightSets, lane);
+            for (uniform int j = 0; j < parentLobeLightSetsBuf[lane].mNumLightSets; j++) {
+                parentLobeLightSetsBuf[lane].mLightSetsPtrLo[j] = extract(parentLobeLightSets->mLightSetsPtrLo[j], lane);
+                parentLobeLightSetsBuf[lane].mLightSetsPtrHi[j] = extract(parentLobeLightSets->mLightSetsPtrHi[j], lane);
+            }
+        }
+    }
+    // ----------------------------------------------
+
     CPP_lightIntersect(acc->mRtcScene,
                        rayHit,
                        &iIncludeRayTerminationLights,
@@ -127,7 +159,9 @@ LightAccelerator_intersectBounded(const uniform LightAccelerator * uniform acc,
                        &isect.geomID,
                        &isect.primID,
                        &cullingNormal,
-                       lightIdMap);
+                       lightIdMap,
+                       &bsdfLobeLightSet,
+                       parentLobeLightSetsBuf);
 
     if (rayHit.hit.geomID == RTC_INVALID_GEOMETRY_ID) {
         isect.distance = maxDistance;
@@ -159,28 +193,25 @@ LightAccelerator_intersectUnbounded(uniform PbrTLState * uniform pbrTls,
                                     varying int depth,
                                     varying LightIntersection &isect,
                                     varying int &numHits,
-                                    const uniform int * uniform lightIdMap)
+                                    const uniform int * uniform lightIdMap,
+                                    varying intptr_t bsdfLobeLightSet,
+                                    const varying Rdl2LightSetList * uniform parentLobeLightSets)
 {
     isect.distance = maxDistance;
 
     varying int chosenLightIdx = -1;
     for (uniform int idx = 0; idx < acc->mUnboundedLightCount; idx++) {
-        // skipe lights that do not exist in LightSet
+        // skip lights that do not exist in LightSet
         if (lightIdMap[idx + acc->mBoundedLightCount] == -1) {
             continue;
         }
         const uniform Light * uniform light = acc->mUnboundedLights[idx];
         LightIntersection currentIsect;
         
-        if (!(visibilityMask & Light_getVisibilityMask(light))) {
-            // skip light if it is masked
+        if (!isLightActive(light, visibilityMask, includeRayTerminationLights, bsdfLobeLightSet, parentLobeLightSets)) {
             continue;
         }
 
-        if (!includeRayTerminationLights && Light_getIsRayTerminator(light)) {
-            // Skip any ray termination lights if we were told not to include them
-            continue;
-        }
         Vec3f cullingNormal;
         // Unbounded lights do not need a culling normal.
         setInvalidCullingNormal(&cullingNormal);

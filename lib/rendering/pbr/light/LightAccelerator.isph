@@ -34,7 +34,9 @@ LightAccelerator_intersect(uniform PbrTLState * uniform pbrTls,
                            varying int depth,
                            varying LightIntersection &isect,
                            varying int &numHits,
-                           const uniform int * uniform lightIdMap);
+                           const uniform int * uniform lightIdMap,
+                           varying intptr_t bsdfLobeLightSet,
+                           const varying Rdl2LightSetList* uniform parentLobeLightSets);
 
 varying int
 LightAccelerator_intersectBounded(const uniform LightAccelerator * uniform acc,
@@ -49,7 +51,9 @@ LightAccelerator_intersectBounded(const uniform LightAccelerator * uniform acc,
                                   varying int depth,
                                   varying LightIntersection &isect,
                                   varying int &numHits,
-                                  const uniform int * uniform lightIdMap);
+                                  const uniform int * uniform lightIdMap,
+                                  varying intptr_t bsdfLobeLightSet,
+                                  const varying Rdl2LightSetList* uniform parentLobeLightSets);
 
 varying int
 LightAccelerator_intersectUnbounded(uniform PbrTLState * uniform pbrTls,
@@ -64,7 +68,9 @@ LightAccelerator_intersectUnbounded(uniform PbrTLState * uniform pbrTls,
                                     varying int depth,
                                     varying LightIntersection &closestIsect,
                                     varying int &numHits,
-                                    const uniform int * uniform lightIdMap);
+                                    const uniform int * uniform lightIdMap,
+                                    varying intptr_t bsdfLobeLightSet,
+                                    const varying Rdl2LightSetList* uniform parentLobeLightSets);
 
 inline bool
 LightAccelerator_useAcceleration(const uniform LightAccelerator * uniform acc)
@@ -105,5 +111,7 @@ CPP_lightIntersect(uniform RTCScene scene, varying RTCRayHit& rayHit,
                    varying int* uniform primID,
                    varying int* uniform geomID,
                    const varying Vec3f* uniform shadingNormal,
-                   const uniform int* uniform lightIdMap);
+                   const uniform int* uniform lightIdMap,
+                   const varying intptr_t* uniform bsdfLobeLightSet,
+                   const uniform Rdl2LightSetList* uniform parentLobeLightSets);
 

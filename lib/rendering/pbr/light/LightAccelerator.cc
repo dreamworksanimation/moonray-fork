@@ -97,15 +97,14 @@ intersectCallback(const RTCIntersectFunctionNArguments* args)
             continue;
         }
 
-        if (!(RTCRayN_mask(rays, N, index) & light->getVisibilityMask())) {
-            // skip light if it is masked
-            continue;
-        }
-
         int rayId = RTCRayN_id(rays, N, index);
-        bool includeRayTerminationLights = context->mIncludeRayTerminationLights[rayId];
-        if (!includeRayTerminationLights && light->getIsRayTerminator()) {
-            // Skip any ray termination lights if we were told not to include them
+        const scene_rdl2::rdl2::LightSet* bsdfLobeLightSet = 
+                                reinterpret_cast<const scene_rdl2::rdl2::LightSet*>(context->mBsdfLobeLightSet[rayId]);
+        const Rdl2LightSetList& parentLobeLightSets = context->mParentLobeLightSets[rayId];
+
+        if (!isLightActive(light, RTCRayN_mask(rays, N, index), context->mIncludeRayTerminationLights[rayId],
+                           bsdfLobeLightSet, &parentLobeLightSets)) {
+            // skip light if it is not active
             continue;
         }
 
@@ -243,7 +242,8 @@ int
 LightAccelerator::intersect(const Vec3f &P,  const Vec3f* N, const Vec3f &wi,
         float time, float maxDistance, bool includeRayTerminationLights, int visibilityMask,
         IntegratorSample1D &samples, int depth, LightIntersection &isect, int &numHits,
-        const int* lightIdMap) const
+        const int* lightIdMap, const scene_rdl2::rdl2::LightSet* bsdfLobeLightSet,
+        const Rdl2LightSetList& parentLobeLightSets) const
 {
     MNRY_ASSERT(mBoundedLightCount >= SCALAR_THRESHOLD_COUNT);
     MNRY_ASSERT(mRtcScene != nullptr);
@@ -253,11 +253,11 @@ LightAccelerator::intersect(const Vec3f &P,  const Vec3f* N, const Vec3f &wi,
 
     LightIntersection boundedIsect;
     int boundedLightIdx = intersectBounded(P, N, wi, time, maxDistance, includeRayTerminationLights, 
-        visibilityMask, samples, depth, boundedIsect, numHits, lightIdMap);
+        visibilityMask, samples, depth, boundedIsect, numHits, lightIdMap, bsdfLobeLightSet, &parentLobeLightSets);
 
     LightIntersection unboundedIsect;
     int unboundedLightIdx = intersectUnbounded(P, wi, time, maxDistance, includeRayTerminationLights,
-        visibilityMask, samples, depth, unboundedIsect, numHits, lightIdMap);
+        visibilityMask, samples, depth, unboundedIsect, numHits, lightIdMap, bsdfLobeLightSet, parentLobeLightSets);
 
     if (unboundedLightIdx >= 0) {
         isect = unboundedIsect;
@@ -275,7 +275,8 @@ LightAccelerator::intersect(const Vec3f &P,  const Vec3f* N, const Vec3f &wi,
 int
 LightAccelerator::intersectBounded(const Vec3f &P,  const Vec3f* N, const Vec3f &wi,
         float time, float maxDistance, bool includeRayTerminationLights, int visibilityMask,
-        IntegratorSample1D &samples, int depth, LightIntersection &isect, int &numHits, const int* lightIdMap) const
+        IntegratorSample1D &samples, int depth, LightIntersection &isect, int &numHits, const int* lightIdMap,
+        const scene_rdl2::rdl2::LightSet* bsdfLobeLightSet, const Rdl2LightSetList* parentLobeLightSets) const
 {
     RTCRayHit rayHit;
     rayHit.ray.org_x = P.x;
@@ -307,7 +308,9 @@ LightAccelerator::intersectBounded(const Vec3f &P,  const Vec3f* N, const Vec3f 
     context.mNumHits = &numHits;
     context.mDepth = &depth;
     context.mLightIdMap = lightIdMap;
-
+    context.mParentLobeLightSets = parentLobeLightSets;
+    context.mBsdfLobeLightSet = reinterpret_cast<const intptr_t*>(&bsdfLobeLightSet);
+    
     // Call Embree intersection test
     RTCIntersectArguments args;
     rtcInitIntersectArguments(&args);
@@ -336,7 +339,8 @@ LightAccelerator::intersectBounded(const Vec3f &P,  const Vec3f* N, const Vec3f 
 int
 LightAccelerator::intersectUnbounded(const Vec3f &P, const Vec3f &wi, float time,
         float maxDistance, bool includeRayTerminationLights, int visibilityMask, IntegratorSample1D &samples,
-        int depth, LightIntersection &isect, int &numHits, const int* lightIdMap) const
+        int depth, LightIntersection &isect, int &numHits, const int* lightIdMap,
+        const scene_rdl2::rdl2::LightSet* bsdfLobeLightSet, const Rdl2LightSetList& parentLobeLightSets) const
 {
     isect.distance = maxDistance;
 
@@ -349,13 +353,8 @@ LightAccelerator::intersectUnbounded(const Vec3f &P, const Vec3f &wi, float time
         const Light *light = mUnboundedLights[idx];
         LightIntersection currentIsect;
 
-        if (!(visibilityMask & light->getVisibilityMask())) {
-            // skip light if it is masked
-            continue;
-        }
-
-        if (!includeRayTerminationLights && light->getIsRayTerminator()) {
-            // Skip any ray termination lights if we were told not to include them
+        if (!isLightActive(light, visibilityMask, includeRayTerminationLights, 
+                           bsdfLobeLightSet, &parentLobeLightSets)) {
             continue;
         }
 
@@ -386,7 +385,7 @@ extern "C" void CPP_lightIntersect(RTCScene scene, RTCRayHitv& rayHitv,
     int* includeRayTerminationLights, float* isectData0, float* isectData1, SequenceID* sequenceID,
     uint32_t* totalSamples, uint32_t* sampleNumber, int* depth, float* isectDistance, int* numHits,
     float* pdf, int* meshGeomId, int* meshPrimId, const scene_rdl2::math::Vec3fv* shadingNormalv,
-    const int* lightIdMap)
+    const int* lightIdMap, const intptr_t* bsdfLobeLightSet, const Rdl2LightSetList* parentLobeLightSets)
 {
     // Create IntegratorSample1D from ispc array data
     IntegratorSample1D samples[VLEN];
@@ -400,6 +399,8 @@ extern "C" void CPP_lightIntersect(RTCScene scene, RTCRayHitv& rayHitv,
     context.mSamples = (const IntegratorSample1D *)&samples;
     context.mIncludeRayTerminationLights = includeRayTerminationLights;
     context.mLightIdMap = lightIdMap;
+    context.mBsdfLobeLightSet = bsdfLobeLightSet;
+    context.mParentLobeLightSets = parentLobeLightSets;
 
     // light type specific data passed to eval from intersect or sample
     context.mData0 = isectData0;

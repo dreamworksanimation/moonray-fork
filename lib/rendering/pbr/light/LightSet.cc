@@ -34,7 +34,7 @@ LightSet::intersect(const Vec3f &P, const Vec3f *N, const Vec3f &wi, float time,
     const LightAccelerator* acc = mAccelerator;
     if (acc && acc->useAcceleration()) {
         int idx = acc->intersect(P, N, wi, time, maxDistance, includeRayTerminationLights, visibilityMask,
-            samples, depth, chosenIsect, numHits, mAcceleratorLightIdMap);
+            samples, depth, chosenIsect, numHits, mAcceleratorLightIdMap, bsdfLobeLightSet, parentLobeLightSets);
         return idx >= 0 ? mAcceleratorLightIdMap[idx] : idx;
     }
 
@@ -45,32 +45,10 @@ LightSet::intersect(const Vec3f &P, const Vec3f *N, const Vec3f &wi, float time,
 
         LightIntersection currentIsect;
         const Light* light = mLights[l];
-        const scene_rdl2::rdl2::Light *rdlLight = light->getRdlLight();
 
-        if (!(visibilityMask & light->getVisibilityMask())) {
-            // skip light if it is masked
+        if (!isLightActive(light, visibilityMask, includeRayTerminationLights, 
+                           bsdfLobeLightSet, &parentLobeLightSets)) {
             continue;
-        }
-
-        if (!includeRayTerminationLights && light->getIsRayTerminator()) {
-            // Skip any ray termination lights if we were told not to include them
-            continue;
-        }
-
-        if (light->hasPortal()) {
-            // skip light if it has a portal assigned
-            continue;
-        }
-
-        // Skip the light if it's not in all of the parent lobes' lightsets or the
-        // current lobe's lightset.
-        if (!parentLobeLightSets.allLightSetsContain(rdlLight)) {
-            continue;
-        }
-        if (bsdfLobeLightSet != nullptr) {
-            if (!bsdfLobeLightSet->contains(rdlLight)) {
-                continue;
-            }
         }
 
         if (light->intersect(P, N, wi, time, maxDistance, currentIsect)) {

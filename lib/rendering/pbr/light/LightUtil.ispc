@@ -153,5 +153,44 @@ chooseThisLight(uniform PbrTLState * uniform pbrTls,
     return chooseThisOne;
 }
 
+bool 
+isLightActive(const uniform Light * uniform light,
+              varying int visibilityMask,
+              varying bool includeRayTerminationLights,
+              varying intptr_t bsdfLobeLightSet,
+              const varying Rdl2LightSetList * uniform parentLobeLightSets)
+{
+    if ((visibilityMask & Light_getVisibilityMask(light)) == 0) {
+        // skip light if it is masked
+        return false;
+    }
+
+    if (!includeRayTerminationLights && Light_getIsRayTerminator(light)) {
+        // Skip any ray termination lights if we were told not to include them
+        return false;
+    }
+
+    if (Light_hasPortal(light)) {
+        // skip light if it has a portal assigned
+        return false;
+    }
+
+    // Skip the light if it's not in all of the parent lobes' lightsets or the
+    // current lobe's lightset.
+    uniform intptr_t rdlLight = Light_getRdlLight(light);
+    if (parentLobeLightSets != 0) {
+        if (!allLightSetsContain(parentLobeLightSets, rdlLight)) {
+            return false;
+        }
+    }
+    if (bsdfLobeLightSet != 0) {
+        if (!lobeLightSetContains(bsdfLobeLightSet, rdlLight)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 //----------------------------------------------------------------------------
 

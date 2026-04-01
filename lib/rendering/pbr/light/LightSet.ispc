@@ -37,7 +37,7 @@ LightSet_intersect(uniform PbrTLState * uniform pbrTls, const uniform LightSet *
     if (acc && LightAccelerator_useAcceleration(acc)) {
         varying int idx = LightAccelerator_intersect(pbrTls, acc, P, cullingNormal, wi, time, maxDistance,
             includeRayTerminationLights, visibilityMask, samples, depth, chosenIsect, numHits,
-            lightSet->mAcceleratorLightIdMap);
+            lightSet->mAcceleratorLightIdMap, bsdfLobeLightSet, parentLobeLightSets);
         return idx >= 0 ? lightSet->mAcceleratorLightIdMap[idx] : idx;
     }
     
@@ -49,33 +49,8 @@ LightSet_intersect(uniform PbrTLState * uniform pbrTls, const uniform LightSet *
         varying LightIntersection currentIsect;
         const uniform Light * uniform light = lightSet->mLights[l];
 
-        if (!(visibilityMask & Light_getVisibilityMask(light))) {
-            // skip light if it is masked
+        if (!isLightActive(light, visibilityMask, includeRayTerminationLights, bsdfLobeLightSet, parentLobeLightSets)) {
             continue;
-        }
-
-        if (!includeRayTerminationLights && Light_getIsRayTerminator(light)) {
-            // Skip any ray termination lights if we were told not to include them
-            continue;
-        }
-
-        if (Light_hasPortal(light)) {
-            // skip light if it has a portal assigned
-            continue;
-        }
-
-        // Skip the light if it's not in all of the parent lobes' lightsets or the
-        // current lobe's lightset.
-        uniform intptr_t rdlLight = Light_getRdlLight(light);
-        if (parentLobeLightSets != 0) {
-            if (!allLightSetsContain(parentLobeLightSets, rdlLight)) {
-                continue;
-            }
-        }
-        if (bsdfLobeLightSet != 0) {
-            if (!lobeLightSetContains(bsdfLobeLightSet, rdlLight)) {
-                continue;
-            }
         }
 
         if (Light_intersect(light, P, cullingNormal, wi, time, maxDistance, currentIsect)) {
