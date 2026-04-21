@@ -165,18 +165,36 @@ LocalMotionBlur::apply(const MotionBlurType mbType,
 {
     std::vector<float> localMbMask(vertices.size());
 
+    const size_t numTimeSteps = vertices.get_time_steps();
+
     // Vertices are transformed into world space using the object's
     // node_xform parameter and the local transforms in parent2root.
     XformSamples local2world = concatenate(parent2root, mNodeXform);
+
+    // Expand a single-timestep vertex buffer to two steps by duplicating step 0
+    // into step 1, so the renderer always sees 2 motion samples.
+    const auto expandVertexBuffer = [&vertices, numTimeSteps]() {
+        if (numTimeSteps < 2) {
+            VertexBuffer<AttributeType, InterleavedTraits> expanded(vertices.size(), 2);
+            for (size_t i = 0; i < vertices.size(); ++i) {
+                expanded(i, 0) = vertices(i, 0);
+                expanded(i, 1) = vertices(i, 0);
+            }
+            vertices = std::move(expanded);
+        }
+    };
 
     switch (mbType) {
 
     case MotionBlurType::STATIC_DUPLICATE:
     case MotionBlurType::FRAME_DELTA:
     {
+        expandVertexBuffer();
         for (size_t i = 0; i < vertices.size(); ++i) {
-            vertices(i, 0) = transformPoint(local2world[0], vertices(i, 0));
-            vertices(i, 1) = transformPoint(local2world[1], vertices(i, 1));
+            const AttributeType orig0 = vertices(i, 0);
+            const AttributeType orig1 = vertices(i, 1);
+            vertices(i, 0) = transformPoint(local2world[0], orig0);
+            vertices(i, 1) = transformPoint(local2world[1], orig1);
 
             const Vec3f& p0 = vertices(i, 0);
             const Vec3f& p1 = vertices(i, 1);
@@ -281,28 +299,42 @@ LocalMotionBlur::apply(const MotionBlurType mbType,
             mRdlGeometry->error("Velocity must be defined at vertex or varying rate for local motion blur");
             return;
         }
+        expandVertexBuffer();
+
+        // Ensure velocity always has 2 time samples to match the (now 2-step)
+        // vertex buffer.  The sample count may be 1 even when numTimeSteps >= 2
+        // (e.g. a geometry that exported positions at two times but only one
+        // velocity sample), so we gate on the actual velocity sample count, not
+        // on numTimeSteps.
+        if (primitiveAttributeTable.getTimeSampleCount(StandardAttributes::sVelocity) < 2) {
+            std::vector<Vec3f> velCopy(velocity0Attr.begin(), velocity0Attr.end());
+            primitiveAttributeTable.find(StandardAttributes::sVelocity)->second.emplace_back(
+                new PrimitiveAttribute<Vec3f>(velocity0Attr.getRate(), std::move(velCopy)));
+        }
         PrimitiveAttribute<Vec3f>& velocity1Attr =
             primitiveAttributeTable.getAttribute(StandardAttributes::sVelocity, 1);
 
         for (size_t i = 0; i < vertices.size(); ++i) {
-            vertices(i, 0) = transformPoint(local2world[0], vertices(i, 0));
-            vertices(i, 1) = transformPoint(local2world[1], vertices(i, 1));
+            const AttributeType orig0 = vertices(i, 0);
+            const AttributeType orig1 = vertices(i, 1);
+            vertices(i, 0) = transformPoint(local2world[0], orig0);
+            vertices(i, 1) = transformPoint(local2world[1], orig1);
 
+            const Vec3f& p0 = vertices(i, 0);
             const Vec3f& p1 = vertices(i, 1);
             const float mbMult = getMultiplier(p1, parent2root);
             localMbMask[i] = 1.0f - mbMult;
             if (!isOne(mbMult)) {
-                const Vec3f& p0 = vertices(i, 0);
 
                 // Compute per-sample velocity corrections since the
                 // rotational component is position-dependent.
                 const Vec3f cameraVelCorrection0 =
                     (transformPoint(mCameraRelXform, p0) - p0) * mFps;
-                const Vec3f cameraVelCorrection1 =
-                    (transformPoint(mCameraRelXform, p1) - p1) * mFps;
                 velocity0Attr[i] = velocity0Attr[i] * mbMult -
                                    cameraVelCorrection0 * (1.0f - mbMult);
 
+                const Vec3f cameraVelCorrection1 =
+                    (transformPoint(mCameraRelXform, p1) - p1) * mFps;
                 velocity1Attr[i] = velocity1Attr[i] * mbMult -
                                    cameraVelCorrection1 * (1.0f - mbMult);
 
